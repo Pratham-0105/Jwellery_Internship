@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JEWELRY — Terrain Jewelry</title>
+<meta name="description" content="Turn a meaningful place on Earth into a unique terrain pendant.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=Playfair+Display:ital,wght@0,400;0,500;1,400;1,500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="header">
+  <a href="#home" class="logo">JEWELRY</a>
+  <nav class="nav">
+    <a href="#about">About</a><a href="#quality">Quality</a><a href="#gallery">Gallery</a><a href="#pricing">Price</a>
+    <button class="nav-create" onclick="openConfigurator()">Create Pendant <span>↗</span></button>
+  </nav>
+  <button class="mobile-menu" onclick="toggleMenu()" aria-label="Open menu">☰</button>
+</header>
+
+<div class="mobile-nav" id="mobileNav">
+  <a href="#about" onclick="closeMenu()">About</a><a href="#quality" onclick="closeMenu()">Quality</a>
+  <a href="#gallery" onclick="closeMenu()">Gallery</a><a href="#pricing" onclick="closeMenu()">Price</a>
+  <button onclick="openConfigurator();closeMenu()">Create Your Pendant →</button>
+</div>
+
+<main id="home">
+<section class="hero">
+  <div class="hero-content">
+    <div class="eyebrow">TERRAIN JEWELRY <span>·</span> HANDCRAFTED</div>
+    <h1>A pendant<br>shaped by<br><em>your place.</em></h1>
+    <p class="hero-description">Choose any point on Earth and turn its landscape into a unique piece of jewelry.</p>
+    <button class="primary-button" onclick="openConfigurator()">Create Your Pendant <span>↗</span></button>
+  </div>
+  <div class="hero-visual">
+    <div class="mountain-background"></div>
+    <div class="pendant-large">
+      <div class="pendant-hole"></div>
+      <div class="terrain-lines"><span></span><span></span><span></span><span></span><span></span></div>
+    </div>
+    <div class="location-tag"><span>ELBRUS</span><strong>5,642 M</strong></div>
+  </div>
+  <div class="scroll-indicator"><span>↓</span> SCROLL TO EXPLORE</div>
+</section>
+
+<section class="section about" id="about">
+  <div class="section-label"><span>01</span> ABOUT US</div>
+  <div class="about-grid">
+    <div class="about-title"><h2>We turn<br><em>places</em><br>into memories.</h2></div>
+    <div class="about-content">
+      <p class="large-text">Some places are more than coordinates on a map.</p>
+      <p>They are where you grew up, where you met someone special, where you found yourself, or where you simply felt free.</p>
+      <p>Jewelry transforms these meaningful landscapes into handcrafted terrain jewelry.</p>
+      <button class="text-button">Discover Our Story <span>→</span></button>
+    </div>
+  </div>
+</section>
+
+<section class="section quality" id="quality">
+  <div class="section-label"><span>02</span> MATERIALS & CRAFT</div>
+  <div class="quality-header">
+    <h2>Crafted with<br><em>millimeter precision.</em></h2>
+    <p>Every pendant combines digital terrain data with traditional jewelry craftsmanship.</p>
+  </div>
+  <div class="stats">
+    <div class="stat"><div class="stat-number">17 <small>YEARS</small></div><h3>Jewelry experience</h3><p>Experienced craftsmen finish every piece by hand.</p></div>
+    <div class="stat"><div class="stat-number">0.1 <small>MM</small></div><h3>Terrain precision</h3><p>Fine terrain details are reproduced with high precision.</p></div>
+    <div class="stat"><div class="stat-number">7–14 <small>DAYS</small></div><h3>Production time</h3><p>From your order to the finished handcrafted piece.</p></div>
+  </div>
+</section>
+
+<section class="visual-break">
+  <div class="visual-break-content"><span>YOUR PLACE</span><h2>YOUR<br><em>STORY.</em></h2></div>
+</section>
+
+<section class="section gallery" id="gallery">
+  <div class="gallery-header">
+    <div><div class="section-label"><span>03</span> GALLERY</div><h2>Every piece<br>is <em>different.</em></h2></div>
+    <p>Real landscapes transformed into objects you can carry with you every day.</p>
+  </div>
+  <div class="gallery-grid">
+    <article class="gallery-card"><div class="gallery-image image-one"><div class="gallery-pendant"><div class="small-hole"></div><div class="small-terrain"></div></div></div><div class="gallery-info"><span>01</span><h3>Mountain Ridge</h3><small>Handmade terrain</small></div></article>
+    <article class="gallery-card"><div class="gallery-image image-two"><div class="gallery-pendant dark"><div class="small-hole"></div><div class="small-terrain"></div></div></div><div class="gallery-info"><span>02</span><h3>Black Terrain</h3><small>Hand-finished</small></div></article>
+    <article class="gallery-card"><div class="gallery-image image-three"><div class="gallery-pendant"><div class="small-hole"></div><div class="small-terrain"></div></div></div><div class="gallery-info"><span>03</span><h3>Your Coordinates</h3><small>Custom landscape</small></div></article>
+  </div>
+  <button class="outline-button">View All Pieces <span>→</span></button>
+</section>
+
+<section class="section pricing" id="pricing">
+  <div class="section-label"><span>04</span> PRICING</div>
+  <div class="pricing-layout">
+    <div class="pricing-title"><h2>Your terrain.<br>Your <em>size.</em></h2><p>Choose the size that fits your story.</p></div>
+    <div class="pricing-content">
+      <div class="price-from"><span>FROM</span><strong>₹11,900</strong></div>
+      <div class="size-options">
+        <button class="size-option active" onclick="selectSize(this,11900)"><span>18 mm</span><strong>₹11,900</strong></button>
+        <button class="size-option" onclick="selectSize(this,12700)"><span>20 mm</span><strong>₹12,700</strong></button>
+        <button class="size-option" onclick="selectSize(this,15700)"><span>25 mm</span><strong>₹15,700</strong></button>
+        <button class="size-option" onclick="selectSize(this,19400)"><span>30 mm</span><strong>₹19,400</strong></button>
+      </div>
+      <div class="features">
+        <div><span>✓</span>Custom terrain from real data</div><div><span>✓</span>High precision jewelry casting</div>
+        <div><span>✓</span>Cord included</div><div><span>✓</span>7–14 day production</div>
+        <div><span>✓</span>Worldwide shipping</div><div><span>✓</span>Gift packaging</div>
+      </div>
+      <button class="primary-button" onclick="openConfigurator()">Create Your Pendant <span>↗</span></button>
+    </div>
+  </div>
+</section>
+
+<section class="section faq">
+  <div class="section-label"><span>05</span> FAQ</div>
+  <div class="faq-header"><h2>Terrain jewelry:<br><em>your questions.</em></h2></div>
+  <div class="faq-list">
+    <div class="faq-item"><button class="faq-question" onclick="toggleFaq(this)"><span>What is a terrain pendant?</span><strong>+</strong></button><div class="faq-answer"><p>A terrain pendant is a piece of jewelry created from the actual landscape of a location. Mountains, valleys and terrain lines become part of the pendant.</p></div></div>
+    <div class="faq-item"><button class="faq-question" onclick="toggleFaq(this)"><span>Can I choose any location?</span><strong>+</strong></button><div class="faq-answer"><p>Yes. You can choose virtually any location on Earth — a city, mountain, home, travel destination or any meaningful place.</p></div></div>
+    <div class="faq-item"><button class="faq-question" onclick="toggleFaq(this)"><span>Can I add coordinates or engraving?</span><strong>+</strong></button><div class="faq-answer"><p>Yes. Coordinates and a short personalized message can be added to the back of the pendant.</p></div></div>
+    <div class="faq-item"><button class="faq-question" onclick="toggleFaq(this)"><span>How long does production take?</span><strong>+</strong></button><div class="faq-answer"><p>Production usually takes approximately 7–14 days depending on the selected configuration.</p></div></div>
+    <div class="faq-item"><button class="faq-question" onclick="toggleFaq(this)"><span>How do I create my pendant?</span><strong>+</strong></button><div class="faq-answer"><p>Open the configurator, select a location, choose the pendant size and add optional engraving.</p></div></div>
+  </div>
+</section>
+</main>
+
+<footer class="footer">
+  <div class="footer-top">
+    <div class="footer-brand"><div class="footer-logo">JEWELRY</div><p>Earth's terrain, turned into jewelry.</p></div>
+    <div class="footer-column"><h4>EXPLORE</h4><a href="#about">About</a><a href="#quality">Quality</a><a href="#gallery">Gallery</a><a href="#pricing">Pricing</a></div>
+    <div class="footer-column"><h4>SUPPORT</h4><a href="#">Shipping</a><a href="#">Returns</a><a href="#">Privacy</a><a href="#">Terms</a></div>
+    <div class="footer-column"><h4>CONTACT</h4><a href="mailto:hello@jewelry.com">hello@jewelry.com</a><a href="#">Instagram</a><a href="#">Telegram</a></div>
+  </div>
+  <div class="footer-bottom"><span>© 2026 JEWELRY</span><span>TERRAIN JEWELRY</span></div>
+</footer>
+
+<div class="modal" id="configuratorModal">
+  <div class="modal-content">
+    <button class="modal-close" onclick="closeConfigurator()">×</button>
+    <div class="modal-header"><span>CONFIGURATOR</span><h2>Create your <em>pendant.</em></h2><p>The map and 3D configurator can be connected to your backend later.</p></div>
+    <div class="config-step"><label>01 — Choose a location</label><div class="fake-map"><div class="map-grid"></div><div class="map-pin">📍</div><span>Select location</span></div></div>
+    <div class="config-step"><label>02 — Select size</label><div class="modal-sizes">
+      <button onclick="setModalSize(this,'18 mm')">18 mm</button><button onclick="setModalSize(this,'20 mm')">20 mm</button><button onclick="setModalSize(this,'25 mm')">25 mm</button><button onclick="setModalSize(this,'30 mm')">30 mm</button>
+    </div></div>
+    <div class="config-step"><label>03 — Optional engraving</label><input type="text" id="engraving" placeholder="Your message or coordinates" maxlength="40"></div>
+    <div class="config-footer"><div><small>Starting from</small><strong id="modalPrice">₹11,900</strong></div><button class="primary-button" onclick="continueConfigurator()">Continue <span>→</span></button></div>
+  </div>
+</div>
+<script src="script.js"></script>
+</body>
+</html>
