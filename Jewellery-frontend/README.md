@@ -1,4 +1,4 @@
-# Jewelry Frontend
+# Jewellery Frontend
 
 Plain HTML + CSS + JavaScript frontend.
 
