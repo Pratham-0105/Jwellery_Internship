@@ -1,0 +1,89 @@
+// Prisma Schema for Terrain Jewellery
+// Database: PostgreSQL
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────
+// Products: pendant sizes and prices
+// ─────────────────────────────────────────────
+model Product {
+  id          Int      @id @default(autoincrement())
+  name        String   // e.g. "18 mm", "20 mm"
+  sizeLabel   String   // e.g. "18 mm"
+  sizeMm      Int      // numeric size for sorting
+  priceInr    Int      // price in Indian Rupees
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  orders      Order[]
+}
+
+// ─────────────────────────────────────────────
+// Gallery: showcase pieces
+// ─────────────────────────────────────────────
+model GalleryItem {
+  id          Int      @id @default(autoincrement())
+  index       Int      // display order (01, 02, 03...)
+  name        String   // e.g. "Mountain Ridge"
+  subtitle    String   // e.g. "Handmade terrain"
+  bgColor     String   @default("#d7d5cb") // background color of card
+  darkPendant Boolean  @default(false)     // dark or light pendant variant
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ─────────────────────────────────────────────
+// FAQ: frequently asked questions
+// ─────────────────────────────────────────────
+model Faq {
+  id        Int      @id @default(autoincrement())
+  index     Int      // display order
+  question  String
+  answer    String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ─────────────────────────────────────────────
+// Orders: customer pendant orders
+// ─────────────────────────────────────────────
+model Order {
+  id          Int         @id @default(autoincrement())
+  // Customer info
+  customerName  String
+  customerEmail String
+  customerPhone String?
+  // Pendant config
+  location    String      // location name chosen by customer
+  latitude    Float?      // optional GPS coords
+  longitude   Float?
+  engraving   String?     // optional engraving text
+  // Product link
+  productId   Int
+  product     Product     @relation(fields: [productId], references: [id])
+  // Order status
+  status      OrderStatus @default(PENDING)
+  totalInr    Int         // final price in INR
+  notes       String?     // internal admin notes
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  IN_PRODUCTION
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
