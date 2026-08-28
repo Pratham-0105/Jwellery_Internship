@@ -34,6 +34,7 @@ const PRESET_LOCATIONS: LocationData[] = [
   { name: 'Manali, Himachal Pradesh', displayName: 'Manali, Kullu Valley, India', lat: 32.2432, lng: 77.1892 },
 ];
 
+// Reliable Public Map Tile Layer Configurations (Zero API Key Dependencies)
 const MAP_STYLES = [
   {
     id: 'silver-hillshade',
@@ -41,15 +42,19 @@ const MAP_STYLES = [
     icon: '✨',
     url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/tile/{z}/{y}/{x}',
     subdomains: '',
+    className: 'silver-surface-tile',
+    attribution: '&copy; Esri &mdash; Source: USGS, Esri, TNO, NOAA, NHN, METI, MapmyIndia',
     fallbackThumb: 'https://server.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/tile/12/1550/2060',
   },
   {
     id: 'dark-surface',
     name: 'Dark Silver Terrain',
     icon: '🌑',
-    url: 'https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png',
-    subdomains: 'abcd',
-    fallbackThumb: 'https://a.basemaps.cartocdn.com/dark_nolabels/12/2048/1365.png',
+    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    subdomains: 'abc',
+    className: 'dark-terrain-tile',
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    fallbackThumb: 'https://a.tile.openstreetmap.org/12/2048/1365.png',
   },
   {
     id: 'topo-contours',
@@ -57,15 +62,19 @@ const MAP_STYLES = [
     icon: '🏔️',
     url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
     subdomains: 'abc',
+    className: 'topo-contours-tile',
+    attribution: 'Map data: &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, SRTM | Map style: &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA)',
     fallbackThumb: 'https://a.tile.opentopomap.org/12/2048/1365.png',
   },
   {
     id: 'light-surface',
     name: 'Bright Silver Etch',
     icon: '💎',
-    url: 'https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png',
-    subdomains: 'abcd',
-    fallbackThumb: 'https://a.basemaps.cartocdn.com/light_nolabels/12/2048/1365.png',
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
+    subdomains: '',
+    className: 'bright-silver-etch-tile',
+    attribution: '&copy; Esri &mdash; Esri, DeLorme, NAVTEQ, TomTom, Intermap, iPC, USGS, FAO, NPS, NRCAN, GeoBase, Kadaster NL, Ordnance Survey, Esri Japan, METI, Esri China (Hong Kong), and the GIS User Community',
+    fallbackThumb: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/12/1550/2060',
   },
 ];
 
@@ -79,13 +88,13 @@ function getStaticTileUrl(lat: number, lng: number, zoom: number, styleId: strin
   );
 
   if (styleId === 'dark-surface') {
-    return `https://a.basemaps.cartocdn.com/dark_nolabels/${zoom}/${x}/${y}.png`;
+    return `https://a.tile.openstreetmap.org/${zoom}/${x}/${y}.png`;
   }
   if (styleId === 'topo-contours') {
     return `https://a.tile.opentopomap.org/${zoom}/${x}/${y}.png`;
   }
   if (styleId === 'light-surface') {
-    return `https://a.basemaps.cartocdn.com/light_nolabels/${zoom}/${x}/${y}.png`;
+    return `https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/${zoom}/${y}/${x}`;
   }
   // Silver Hillshade (default pure surface texture)
   return `https://server.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/tile/${zoom}/${y}/${x}`;
@@ -187,12 +196,13 @@ export default function CustomizerSection({ products, onOpenOrderModal }: Custom
 
       mapInstanceRef.current = map;
 
-      // Add active tile layer
+      // Add active public tile layer
       const styleObj = MAP_STYLES.find((s) => s.id === activeStyleId) || MAP_STYLES[0];
       const layer = L.tileLayer(styleObj.url, {
         maxZoom: 18,
-        subdomains: styleObj.subdomains,
-        className: 'silver-surface-tile',
+        subdomains: styleObj.subdomains || '',
+        className: styleObj.className || 'silver-surface-tile',
+        attribution: styleObj.attribution || '',
       }).addTo(map);
 
       tileLayerRef.current = layer;
@@ -274,8 +284,9 @@ export default function CustomizerSection({ products, onOpenOrderModal }: Custom
 
     const newLayer = L.tileLayer(styleObj.url, {
       maxZoom: 18,
-      subdomains: styleObj.subdomains,
-      className: 'silver-surface-tile',
+      subdomains: styleObj.subdomains || '',
+      className: styleObj.className || 'silver-surface-tile',
+      attribution: styleObj.attribution || '',
     }).addTo(mapInstanceRef.current);
 
     tileLayerRef.current = newLayer;
@@ -505,7 +516,7 @@ export default function CustomizerSection({ products, onOpenOrderModal }: Custom
                               <img
                                 src={thumbUrl}
                                 alt={style.name}
-                                className="option-thumb-img"
+                                className={`option-thumb-img style-${style.id}`}
                                 onError={(e) => {
                                   (e.target as HTMLImageElement).src = style.fallbackThumb;
                                 }}
