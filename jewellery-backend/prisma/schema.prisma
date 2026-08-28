@@ -6,7 +6,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -72,18 +72,9 @@ model Order {
   productId   Int
   product     Product     @relation(fields: [productId], references: [id])
   // Order status
-  status      OrderStatus @default(PENDING)
+  status      String      @default("PENDING")
   totalInr    Int         // final price in INR
   notes       String?     // internal admin notes
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
-}
-
-enum OrderStatus {
-  PENDING
-  CONFIRMED
-  IN_PRODUCTION
-  SHIPPED
-  DELIVERED
-  CANCELLED
 }

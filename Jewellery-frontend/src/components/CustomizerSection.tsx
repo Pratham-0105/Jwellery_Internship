@@ -1,6 +1,6 @@
 'use client';
 // src/components/CustomizerSection.tsx
-// Interactive Customization Section: Leaflet Map + 360° 3D Engraved Silver Pendant Preview + Order Placement
+// Interactive Customization Workstation: Pure Silver Surface Terrain Map + 360° 3D Engraved Silver Pendant Preview + Order Placement
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Product, formatPrice } from '@/lib/api';
@@ -34,8 +34,61 @@ const PRESET_LOCATIONS: LocationData[] = [
   { name: 'Manali, Himachal Pradesh', displayName: 'Manali, Kullu Valley, India', lat: 32.2432, lng: 77.1892 },
 ];
 
+const MAP_STYLES = [
+  {
+    id: 'silver-hillshade',
+    name: 'Silver Surface Relief',
+    icon: '✨',
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/tile/{z}/{y}/{x}',
+    subdomains: '',
+  },
+  {
+    id: 'dark-surface',
+    name: 'Dark Silver Terrain',
+    icon: '🌑',
+    url: 'https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png',
+    subdomains: 'abcd',
+  },
+  {
+    id: 'topo-contours',
+    name: 'Topo Contours',
+    icon: '🏔️',
+    url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
+    subdomains: 'abc',
+  },
+  {
+    id: 'light-surface',
+    name: 'Bright Silver Etch',
+    icon: '💎',
+    url: 'https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png',
+    subdomains: 'abcd',
+  },
+];
+
+// Calculate static map tile URL for selected coordinates
+function getStaticTileUrl(lat: number, lng: number, zoom: number, styleId: string) {
+  const n = Math.pow(2, zoom);
+  const x = Math.floor(((lng + 180) / 360) * n);
+  const latRad = (lat * Math.PI) / 180;
+  const y = Math.floor(
+    ((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2) * n
+  );
+
+  if (styleId === 'dark-surface') {
+    return `https://a.basemaps.cartocdn.com/dark_nolabels/${zoom}/${x}/${y}.png`;
+  }
+  if (styleId === 'topo-contours') {
+    return `https://a.tile.opentopomap.org/${zoom}/${x}/${y}.png`;
+  }
+  if (styleId === 'light-surface') {
+    return `https://a.basemaps.cartocdn.com/light_nolabels/${zoom}/${x}/${y}.png`;
+  }
+  // Silver Hillshade (default pure surface texture)
+  return `https://server.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/tile/${zoom}/${y}/${x}`;
+}
+
 export default function CustomizerSection({ products, onOpenOrderModal }: CustomizerSectionProps) {
-  // Selected location state
+  // Selected location & mapping state
   const [selectedLocation, setSelectedLocation] = useState<LocationData>(PRESET_LOCATIONS[0]);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [engravingText, setEngravingText] = useState('');
@@ -44,9 +97,13 @@ export default function CustomizerSection({ products, onOpenOrderModal }: Custom
   const [isSearching, setIsSearching] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
 
+  // Map customization state
+  const [activeStyleId, setActiveStyleId] = useState<string>('silver-hillshade');
+
   // Map & DOM references
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
+  const tileLayerRef = useRef<any>(null);
   const markerRef = useRef<any>(null);
 
   // 360° 3D Pendant Interactive State
@@ -79,11 +136,11 @@ export default function CustomizerSection({ products, onOpenOrderModal }: Custom
       if (typeof window === 'undefined' || !mapContainerRef.current) return;
       if (mapInstanceRef.current) return; // already initialized
 
-      // Dynamically import Leaflet to prevent SSR issues
+      // Dynamically import Leaflet
       const L = (await import('leaflet')).default;
       if (!isMounted || !mapContainerRef.current) return;
 
-      // Import Leaflet CSS if not already present
+      // Import Leaflet CSS if missing
       if (!document.getElementById('leaflet-css')) {
         const link = document.createElement('link');
         link.id = 'leaflet-css';
@@ -92,7 +149,7 @@ export default function CustomizerSection({ products, onOpenOrderModal }: Custom
         document.head.appendChild(link);
       }
 
-      // Initialize map instance
+      // Create map
       const map = L.map(mapContainerRef.current, {
         center: [selectedLocation.lat, selectedLocation.lng],
         zoom: 11,
@@ -102,13 +159,17 @@ export default function CustomizerSection({ products, onOpenOrderModal }: Custom
 
       mapInstanceRef.current = map;
 
-      // Luxury dark CartoDB tile layer
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-        maxZoom: 19,
-        subdomains: 'abcd',
+      // Add silver hillshade tile layer
+      const styleObj = MAP_STYLES.find((s) => s.id === activeStyleId) || MAP_STYLES[0];
+      const layer = L.tileLayer(styleObj.url, {
+        maxZoom: 18,
+        subdomains: styleObj.subdomains,
+        className: 'silver-surface-tile',
       }).addTo(map);
 
-      // Custom glowing silver marker icon
+      tileLayerRef.current = layer;
+
+      // Glowing marker
       const customPin = L.divIcon({
         className: 'custom-map-pin',
         html: `
@@ -124,12 +185,11 @@ export default function CustomizerSection({ products, onOpenOrderModal }: Custom
       }).addTo(map);
       markerRef.current = marker;
 
-      // Click on map to select any coordinate
+      // Click on map to pick coordinate
       map.on('click', async (e: any) => {
         const { lat, lng } = e.latlng;
         marker.setLatLng([lat, lng]);
 
-        // Reverse geocoding using OpenStreetMap Nominatim
         try {
           const res = await fetch(
             `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=14`
@@ -172,7 +232,28 @@ export default function CustomizerSection({ products, onOpenOrderModal }: Custom
     };
   }, []);
 
-  // Update map viewport & marker when selected location changes
+  // Handle map style layer switch
+  const handleStyleSwitch = async (styleId: string) => {
+    setActiveStyleId(styleId);
+    if (!mapInstanceRef.current) return;
+
+    const L = (await import('leaflet')).default;
+    const styleObj = MAP_STYLES.find((s) => s.id === styleId) || MAP_STYLES[0];
+
+    if (tileLayerRef.current) {
+      mapInstanceRef.current.removeLayer(tileLayerRef.current);
+    }
+
+    const newLayer = L.tileLayer(styleObj.url, {
+      maxZoom: 18,
+      subdomains: styleObj.subdomains,
+      className: 'silver-surface-tile',
+    }).addTo(mapInstanceRef.current);
+
+    tileLayerRef.current = newLayer;
+  };
+
+  // Update map center when location is selected
   const handleSelectLocation = useCallback((loc: LocationData) => {
     setSelectedLocation(loc);
     setSearchOpen(false);
@@ -184,7 +265,7 @@ export default function CustomizerSection({ products, onOpenOrderModal }: Custom
     }
   }, []);
 
-  // Search places via Nominatim API with debounce
+  // Location search with debounce
   useEffect(() => {
     if (!searchQuery.trim() || searchQuery.length < 2) {
       setSearchResults([]);
@@ -220,41 +301,38 @@ export default function CustomizerSection({ products, onOpenOrderModal }: Custom
     return () => clearTimeout(timeoutId);
   }, [searchQuery]);
 
-  // 360° 3D Turntable & Drag Interaction Physics
+  // 3D Turntable rotation physics loop
   useEffect(() => {
-    let animFrameId: number;
+    let animId: number;
 
-    const render3DLoop = () => {
-      const s = rotState.current;
+    const updateRotation = () => {
+      const state = rotState.current;
 
-      if (!s.isInteracting) {
-        // Slow subtle breathing turntable spin when not dragging
-        s.idleAngle += 0.008;
-        s.targetRotY = Math.sin(s.idleAngle) * 22;
-        s.targetRotX = 8 + Math.cos(s.idleAngle * 0.7) * 4;
+      if (!state.isInteracting) {
+        state.idleAngle += 0.35;
+        state.targetRotY = 15 + Math.sin((state.idleAngle * Math.PI) / 180) * 12;
       }
 
-      // Smooth Linear Interpolation (LERP)
-      s.currentRotY += (s.targetRotY - s.currentRotY) * 0.08;
-      s.currentRotX += (s.targetRotX - s.currentRotX) * 0.08;
+      state.currentRotY += (state.targetRotY - state.currentRotY) * 0.08;
+      state.currentRotX += (state.targetRotX - state.currentRotX) * 0.08;
 
       setDisplayRot({
-        rotX: parseFloat(s.currentRotX.toFixed(2)),
-        rotY: parseFloat(s.currentRotY.toFixed(2)),
+        rotX: Math.round(state.currentRotX * 10) / 10,
+        rotY: Math.round(state.currentRotY * 10) / 10,
       });
 
-      animFrameId = requestAnimationFrame(render3DLoop);
+      animId = requestAnimationFrame(updateRotation);
     };
 
-    animFrameId = requestAnimationFrame(render3DLoop);
-    return () => cancelAnimationFrame(animFrameId);
+    animId = requestAnimationFrame(updateRotation);
+    return () => cancelAnimationFrame(animId);
   }, []);
 
-  // Mouse & Touch Drag Handlers
+  // Mouse & Touch interaction handlers
   const handlePointerDown = (clientX: number, clientY: number) => {
     isDraggingRef.current = true;
-    rotState.current.isInteracting = true;
     startPosRef.current = { x: clientX, y: clientY };
+    rotState.current.isInteracting = true;
   };
 
   const handlePointerMove = (clientX: number, clientY: number) => {
@@ -263,43 +341,44 @@ export default function CustomizerSection({ products, onOpenOrderModal }: Custom
     const deltaY = clientY - startPosRef.current.y;
 
     rotState.current.targetRotY += deltaX * 0.45;
-    rotState.current.targetRotX = Math.max(Math.min(rotState.current.targetRotX - deltaY * 0.35, 45), -45);
+    rotState.current.targetRotX = Math.max(-35, Math.min(35, rotState.current.targetRotX - deltaY * 0.35));
 
     startPosRef.current = { x: clientX, y: clientY };
   };
 
   const handlePointerUp = () => {
     isDraggingRef.current = false;
-    // Release back to gentle rotation after a 2-second pause
     setTimeout(() => {
       if (!isDraggingRef.current) {
         rotState.current.isInteracting = false;
       }
-    }, 2000);
+    }, 2500);
   };
 
-  // Format coordinates cleanly
-  const latStr = `${Math.abs(selectedLocation.lat).toFixed(4)}° ${selectedLocation.lat >= 0 ? 'N' : 'S'}`;
-  const lngStr = `${Math.abs(selectedLocation.lng).toFixed(4)}° ${selectedLocation.lng >= 0 ? 'E' : 'W'}`;
-
-  // Proceed / Place Order trigger
+  // Place order handler
   const handleProceedOrder = () => {
     if (!selectedProduct) return;
     onOpenOrderModal({
-      location: selectedLocation.name || selectedLocation.displayName,
+      location: selectedLocation.name,
       latitude: selectedLocation.lat,
       longitude: selectedLocation.lng,
-      engraving: engravingText || undefined,
+      engraving: engravingText.trim() || undefined,
       productId: selectedProduct.id,
       priceInr: selectedProduct.priceInr,
     });
   };
 
+  const latStr = `${Math.abs(selectedLocation.lat).toFixed(4)}° ${selectedLocation.lat >= 0 ? 'N' : 'S'}`;
+  const lngStr = `${Math.abs(selectedLocation.lng).toFixed(4)}° ${selectedLocation.lng >= 0 ? 'E' : 'W'}`;
+
+  // Current static map tile image URL
+  const currentTileUrl = getStaticTileUrl(selectedLocation.lat, selectedLocation.lng, 12, activeStyleId);
+
   return (
-    <section className="section customizer-section" id="customizer">
+    <section className="section-padding customizer-section" id="customizer">
       {/* Header */}
       <div className="section-label">
-        <span>05</span> PENDANT CUSTOMIZATION
+        <span>05</span> PENDANT CUSTOMIZATION & TERRAIN MAP
       </div>
 
       <div className="customizer-header">
@@ -308,13 +387,13 @@ export default function CustomizerSection({ products, onOpenOrderModal }: Custom
           Holds Your <em className="serif-em">Memory.</em>
         </h2>
         <p>
-          Search any city, summit, coastline, or memory on Earth. We extract its real topographical terrain and engrave it into precious silver.
+          Search any summit, coastline, or memory on Earth. We extract its pure topographical surface terrain—with no map text or labels—and engrave it in solid sterling silver.
         </p>
       </div>
 
       {/* Main 2-Column Customizer Workstation */}
       <div className="customizer-workstation">
-        {/* Left Column: Interactive Map & Location Selector */}
+        {/* Left Column: Interactive Silver Terrain Map */}
         <div className="map-column">
           <div className="map-card">
             {/* Search Bar */}
@@ -349,8 +428,25 @@ export default function CustomizerSection({ products, onOpenOrderModal }: Custom
               )}
             </div>
 
+            {/* Map Surface Style Switcher Bar */}
+            <div className="map-style-bar">
+              <span className="style-label">SILVER MAP TERRAIN:</span>
+              <div className="style-buttons">
+                {MAP_STYLES.map((style) => (
+                  <button
+                    key={style.id}
+                    className={`style-btn${activeStyleId === style.id ? ' active' : ''}`}
+                    onClick={() => handleStyleSwitch(style.id)}
+                  >
+                    <span>{style.icon}</span>
+                    <strong>{style.name}</strong>
+                  </button>
+                ))}
+              </div>
+            </div>
+
             {/* Interactive Leaflet Map Container */}
-            <div className="leaflet-map-wrapper">
+            <div className="leaflet-map-wrapper silver-terrain-wrapper">
               <div ref={mapContainerRef} className="leaflet-map-element" />
               <div className="map-hint-badge">
                 <span>📍 Click anywhere on map to pin custom coordinates</span>
@@ -381,7 +477,7 @@ export default function CustomizerSection({ products, onOpenOrderModal }: Custom
                 <span className="meta-coords">{latStr}, {lngStr}</span>
               </div>
               <div className="meta-right">
-                <label htmlFor="custom-engraving-field">CUSTOM ENGRAVING (OPTIONAL)</label>
+                <label htmlFor="custom-engraving-field">CUSTOM BACK ENGRAVING (OPTIONAL)</label>
                 <input
                   id="custom-engraving-field"
                   type="text"
@@ -400,7 +496,7 @@ export default function CustomizerSection({ products, onOpenOrderModal }: Custom
           <div className="preview-card">
             <div className="preview-header">
               <div>
-                <small>YOUR CUSTOM PENDANT</small>
+                <small>3D SILVER PENDANT PREVIEW</small>
                 <h3>{selectedLocation.name}</h3>
               </div>
               <div className="rotation-hint">
@@ -408,7 +504,7 @@ export default function CustomizerSection({ products, onOpenOrderModal }: Custom
               </div>
             </div>
 
-            {/* Interactive 3D Turntable Box */}
+            {/* Interactive 3D Turntable Stage */}
             <div
               className="pendant-3d-stage"
               ref={previewBoxRef}
@@ -426,7 +522,7 @@ export default function CustomizerSection({ products, onOpenOrderModal }: Custom
               }}
               onTouchEnd={handlePointerUp}
             >
-              {/* Dynamic 3D Pendant Model with Surface-Engraved Terrain & Lighting */}
+              {/* Dynamic 3D Pendant Model */}
               <div
                 className="pendant-3d-model"
                 style={{
@@ -438,9 +534,9 @@ export default function CustomizerSection({ products, onOpenOrderModal }: Custom
                   <div className="bail-inner" />
                 </div>
 
-                {/* 3D Liquid Silver Body with Engraved Location Topography */}
+                {/* 3D Liquid Silver Body with Pure Engraved Surface Topography */}
                 <div className="pendant-large shiny-emblem preview-pendant-body">
-                  {/* Dynamic Specular Highlights shifting with angle */}
+                  {/* Dynamic Specular Highlights */}
                   <div
                     className="specular-reflection-surface"
                     style={{
@@ -453,7 +549,17 @@ export default function CustomizerSection({ products, onOpenOrderModal }: Custom
                     <div className="hole-rim-highlight" />
                   </div>
 
-                  {/* Physically Engraved Topographical Terrain Contours */}
+                  {/* PURE SURFACE TERRAIN TEXTURE MASK (No Map Labels / Only Topography Relief) */}
+                  <div className="pendant-map-texture-mask">
+                    <img
+                      src={currentTileUrl}
+                      alt="Pure Silver Surface Topography Texture"
+                      className={`pendant-face-tile pure-surface-relief style-${activeStyleId}`}
+                    />
+                    <div className="pendant-silver-etch-grain" />
+                  </div>
+
+                  {/* Topographical Contour Isolines */}
                   <div className="engraved-terrain-layer">
                     <span className="contour-line contour-1" />
                     <span className="contour-line contour-2" />
@@ -462,7 +568,7 @@ export default function CustomizerSection({ products, onOpenOrderModal }: Custom
                     <span className="contour-line contour-5" />
                   </div>
 
-                  {/* Surface Engraved Coordinate Crosshair & Location Monogram */}
+                  {/* Surface Engraved Crosshair & Coordinates Monogram */}
                   <div className="engraved-location-surface">
                     <div className="engraved-pin-crosshair">
                       <div className="crosshair-ring" />
@@ -483,7 +589,7 @@ export default function CustomizerSection({ products, onOpenOrderModal }: Custom
 
             {/* Size Selector in Customizer */}
             <div className="customizer-size-selector">
-              <label>SELECT SIZE</label>
+              <label>SELECT PENDANT SIZE</label>
               <div className="size-buttons-grid">
                 {products.map((p) => (
                   <button
