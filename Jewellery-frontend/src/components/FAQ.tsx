@@ -26,22 +26,25 @@ function FaqRow({ item }: { item: FaqItem }) {
   );
 }
 
+const FALLBACK_FAQS: FaqItem[] = [
+  { id: 1, index: 1, question: 'What is a terrain pendant?', answer: 'A terrain pendant is a piece of jewellery created from the actual landscape of a location.', isActive: true },
+  { id: 2, index: 2, question: 'Can I choose any location?', answer: 'Yes. You can choose virtually any location on Earth.', isActive: true },
+  { id: 3, index: 3, question: 'Can I add coordinates or engraving?', answer: 'Yes. Coordinates and a short personalized message can be added to the back of the pendant.', isActive: true },
+  { id: 4, index: 4, question: 'How long does production take?', answer: 'Production usually takes approximately 7–14 days.', isActive: true },
+  { id: 5, index: 5, question: 'How do I create my pendant?', answer: 'Open the configurator, select a location, choose the pendant size and add optional engraving.', isActive: true },
+];
+
 export default function FAQ() {
-  const [faqs, setFaqs] = useState<FaqItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [faqs, setFaqs] = useState<FaqItem[]>(FALLBACK_FAQS);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     getFaqs()
-      .then(setFaqs)
+      .then((data) => {
+        if (data && data.length > 0) setFaqs(data);
+      })
       .catch(() => {
-        // Fallback FAQs if API offline
-        setFaqs([
-          { id: 1, index: 1, question: 'What is a terrain pendant?', answer: 'A terrain pendant is a piece of jewellery created from the actual landscape of a location.', isActive: true },
-          { id: 2, index: 2, question: 'Can I choose any location?', answer: 'Yes. You can choose virtually any location on Earth.', isActive: true },
-          { id: 3, index: 3, question: 'Can I add coordinates or engraving?', answer: 'Yes. Coordinates and a short personalized message can be added to the back of the pendant.', isActive: true },
-          { id: 4, index: 4, question: 'How long does production take?', answer: 'Production usually takes approximately 7–14 days.', isActive: true },
-          { id: 5, index: 5, question: 'How do I create my pendant?', answer: 'Open the configurator, select a location, choose the pendant size and add optional engraving.', isActive: true },
-        ]);
+        // Keeps fallback FAQs gracefully
       })
       .finally(() => setLoading(false));
   }, []);

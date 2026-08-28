@@ -15,22 +15,26 @@ import Footer from '@/components/Footer';
 import ConfiguratorModal, { CustomOrderData } from '@/components/ConfiguratorModal';
 import { getProducts, Product } from '@/lib/api';
 
+const FALLBACK_PRODUCTS: Product[] = [
+  { id: 1, name: '18 mm', sizeLabel: '18 mm', sizeMm: 18, priceInr: 11900, description: null, isActive: true },
+  { id: 2, name: '20 mm', sizeLabel: '20 mm', sizeMm: 20, priceInr: 12700, description: null, isActive: true },
+  { id: 3, name: '25 mm', sizeLabel: '25 mm', sizeMm: 25, priceInr: 15700, description: null, isActive: true },
+  { id: 4, name: '30 mm', sizeLabel: '30 mm', sizeMm: 30, priceInr: 19400, description: null, isActive: true },
+];
+
 export default function HomePage() {
   const [configuratorOpen, setConfiguratorOpen] = useState(false);
   const [modalCustomData, setModalCustomData] = useState<CustomOrderData | null>(null);
-  const [products, setProducts] = useState<Product[]>([]);
+  const [products, setProducts] = useState<Product[]>(FALLBACK_PRODUCTS);
 
   // Fetch product sizes on mount
   useEffect(() => {
     getProducts()
-      .then((data) => setProducts(data))
+      .then((data) => {
+        if (data && data.length > 0) setProducts(data);
+      })
       .catch(() => {
-        setProducts([
-          { id: 1, name: '18 mm', sizeLabel: '18 mm', sizeMm: 18, priceInr: 11900, description: null, isActive: true },
-          { id: 2, name: '20 mm', sizeLabel: '20 mm', sizeMm: 20, priceInr: 12700, description: null, isActive: true },
-          { id: 3, name: '25 mm', sizeLabel: '25 mm', sizeMm: 25, priceInr: 15700, description: null, isActive: true },
-          { id: 4, name: '30 mm', sizeLabel: '30 mm', sizeMm: 30, priceInr: 19400, description: null, isActive: true },
-        ]);
+        // Keeps fallback products
       });
   }, []);
 

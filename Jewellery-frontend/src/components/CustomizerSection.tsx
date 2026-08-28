@@ -3,7 +3,20 @@
 // Interactive Customization Workstation: Pure Silver Surface Terrain Map + Google Maps Style Layers Control + 360° 3D Engraved Silver Pendant Preview + Order Placement
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+import dynamic from 'next/dynamic';
 import { Product, formatPrice } from '@/lib/api';
+
+const ThreePendantViewer = dynamic(() => import('./ThreePendantViewer'), {
+  ssr: false,
+  loading: () => (
+    <div
+      className="pendant-loading-placeholder"
+      style={{ width: '100%', height: '320px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+    >
+      <div className="skeleton" style={{ width: '250px', height: '250px', borderRadius: '50%' }} />
+    </div>
+  ),
+});
 
 interface CustomizerSectionProps {
   products: Product[];
@@ -35,10 +48,70 @@ const PRESET_LOCATIONS: LocationData[] = [
 ];
 
 // Reliable Public Map Tile Layer Configurations (Zero API Key Dependencies)
-const MAP_STYLES = [
+export interface MapStyleOption {
+  id: string;
+  name: string;
+  category: 'map' | 'jewellery';
+  icon: string;
+  url: string;
+  subdomains?: string;
+  className?: string;
+  attribution: string;
+  fallbackThumb: string;
+}
+
+const MAP_STYLES: MapStyleOption[] = [
+  // ── MAP CATEGORY ──────────────────────────────────────────────────────────
+  {
+    id: 'satellite',
+    name: 'Satellite',
+    category: 'map',
+    icon: '🛰️',
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    subdomains: '',
+    className: 'satellite-tile',
+    attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP',
+    fallbackThumb: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/12/1550/2060',
+  },
+  {
+    id: 'roadmap',
+    name: 'Roadmap',
+    category: 'map',
+    icon: '🗺️',
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+    subdomains: '',
+    className: 'roadmap-tile',
+    attribution: 'Tiles &copy; Esri &mdash; Sources: Esri, DeLorme, NAVTEQ, USGS, Intermap, iPC, NRCAN, Esri Japan, METI, TomTom',
+    fallbackThumb: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/12/1550/2060',
+  },
+  {
+    id: 'terrain',
+    name: 'Terrain',
+    category: 'map',
+    icon: '⛰️',
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Shaded_Relief/MapServer/tile/{z}/{y}/{x}',
+    subdomains: '',
+    className: 'terrain-relief-tile',
+    attribution: 'Tiles &copy; Esri &mdash; Source: USGS, Esri, TNO, NOAA, NHN, METI',
+    fallbackThumb: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Shaded_Relief/MapServer/tile/12/1550/2060',
+  },
+  {
+    id: 'topographic',
+    name: 'Topographic',
+    category: 'map',
+    icon: '📈',
+    url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
+    subdomains: 'abc',
+    className: 'topo-contours-tile',
+    attribution: 'Map data: &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, SRTM | Map style: &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA)',
+    fallbackThumb: 'https://a.tile.opentopomap.org/12/2048/1365.png',
+  },
+
+  // ── JEWELLERY FINISH CATEGORY ─────────────────────────────────────────────
   {
     id: 'silver-hillshade',
     name: 'Silver Surface Relief',
+    category: 'jewellery',
     icon: '✨',
     url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/tile/{z}/{y}/{x}',
     subdomains: '',
@@ -49,31 +122,23 @@ const MAP_STYLES = [
   {
     id: 'dark-surface',
     name: 'Dark Silver Terrain',
+    category: 'jewellery',
     icon: '🌑',
-    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-    subdomains: 'abc',
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/tile/{z}/{y}/{x}',
+    subdomains: '',
     className: 'dark-terrain-tile',
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-    fallbackThumb: 'https://a.tile.openstreetmap.org/12/2048/1365.png',
-  },
-  {
-    id: 'topo-contours',
-    name: 'Topo Contours',
-    icon: '🏔️',
-    url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
-    subdomains: 'abc',
-    className: 'topo-contours-tile',
-    attribution: 'Map data: &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, SRTM | Map style: &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA)',
-    fallbackThumb: 'https://a.tile.opentopomap.org/12/2048/1365.png',
+    attribution: '&copy; Esri &mdash; Source: USGS, Esri, TNO, NOAA, NHN, METI, MapmyIndia',
+    fallbackThumb: 'https://server.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/tile/12/1550/2060',
   },
   {
     id: 'light-surface',
     name: 'Bright Silver Etch',
+    category: 'jewellery',
     icon: '💎',
     url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
     subdomains: '',
     className: 'bright-silver-etch-tile',
-    attribution: '&copy; Esri &mdash; Esri, DeLorme, NAVTEQ, TomTom, Intermap, iPC, USGS, FAO, NPS, NRCAN, GeoBase, Kadaster NL, Ordnance Survey, Esri Japan, METI, Esri China (Hong Kong), and the GIS User Community',
+    attribution: '&copy; Esri &mdash; Esri, DeLorme, NAVTEQ, TomTom, Intermap, iPC, USGS, FAO, NPS',
     fallbackThumb: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/12/1550/2060',
   },
 ];
@@ -87,23 +152,31 @@ function getStaticTileUrl(lat: number, lng: number, zoom: number, styleId: strin
     ((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2) * n
   );
 
-  if (styleId === 'dark-surface') {
-    return `https://a.tile.openstreetmap.org/${zoom}/${x}/${y}.png`;
+  switch (styleId) {
+    case 'satellite':
+      return `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${zoom}/${y}/${x}`;
+    case 'roadmap':
+      return `https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/${zoom}/${y}/${x}`;
+    case 'terrain':
+      return `https://server.arcgisonline.com/ArcGIS/rest/services/World_Shaded_Relief/MapServer/tile/${zoom}/${y}/${x}`;
+    case 'topographic':
+      return `https://a.tile.opentopomap.org/${zoom}/${x}/${y}.png`;
+    case 'dark-surface':
+      return `https://server.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/tile/${zoom}/${y}/${x}`;
+    case 'light-surface':
+      return `https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/${zoom}/${y}/${x}`;
+    case 'silver-hillshade':
+    default:
+      return `https://server.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/tile/${zoom}/${y}/${x}`;
   }
-  if (styleId === 'topo-contours') {
-    return `https://a.tile.opentopomap.org/${zoom}/${x}/${y}.png`;
-  }
-  if (styleId === 'light-surface') {
-    return `https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/${zoom}/${y}/${x}`;
-  }
-  // Silver Hillshade (default pure surface texture)
-  return `https://server.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/tile/${zoom}/${y}/${x}`;
 }
 
 export default function CustomizerSection({ products, onOpenOrderModal }: CustomizerSectionProps) {
   // Selected location & mapping state
   const [selectedLocation, setSelectedLocation] = useState<LocationData>(PRESET_LOCATIONS[0]);
-  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(
+    products && products.length > 0 ? products[0] : null
+  );
   const [engravingText, setEngravingText] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<LocationData[]>([]);
@@ -111,7 +184,8 @@ export default function CustomizerSection({ products, onOpenOrderModal }: Custom
   const [searchOpen, setSearchOpen] = useState(false);
 
   // Map customization state
-  const [activeStyleId, setActiveStyleId] = useState<string>('silver-hillshade');
+  const [activeStyleId, setActiveStyleId] = useState<string>('terrain');
+  const [currentZoom, setCurrentZoom] = useState<number>(12);
   const [isLayerPanelOpen, setIsLayerPanelOpen] = useState<boolean>(false);
 
   // Map & DOM references
@@ -120,6 +194,7 @@ export default function CustomizerSection({ products, onOpenOrderModal }: Custom
   const tileLayerRef = useRef<any>(null);
   const markerRef = useRef<any>(null);
   const layerControlRef = useRef<HTMLDivElement>(null);
+  const pendantCanvasRef = useRef<HTMLCanvasElement>(null);
 
   // 360° 3D Pendant Interactive State
   const previewBoxRef = useRef<HTMLDivElement>(null);
@@ -173,90 +248,107 @@ export default function CustomizerSection({ products, onOpenOrderModal }: Custom
       if (typeof window === 'undefined' || !mapContainerRef.current) return;
       if (mapInstanceRef.current) return; // already initialized
 
-      // Dynamically import Leaflet
-      const L = (await import('leaflet')).default;
-      if (!isMounted || !mapContainerRef.current) return;
+      try {
+        // Dynamically import Leaflet safely
+        const LModule = await import('leaflet');
+        const L = (LModule as any).default || LModule;
+        if (!isMounted || !mapContainerRef.current || !L.map) return;
 
-      // Import Leaflet CSS if missing
-      if (!document.getElementById('leaflet-css')) {
-        const link = document.createElement('link');
-        link.id = 'leaflet-css';
-        link.rel = 'stylesheet';
-        link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-        document.head.appendChild(link);
-      }
-
-      // Create map instance
-      const map = L.map(mapContainerRef.current, {
-        center: [selectedLocation.lat, selectedLocation.lng],
-        zoom: 11,
-        zoomControl: true,
-        attributionControl: false,
-      });
-
-      mapInstanceRef.current = map;
-
-      // Add active public tile layer
-      const styleObj = MAP_STYLES.find((s) => s.id === activeStyleId) || MAP_STYLES[0];
-      const layer = L.tileLayer(styleObj.url, {
-        maxZoom: 18,
-        subdomains: styleObj.subdomains || '',
-        className: styleObj.className || 'silver-surface-tile',
-        attribution: styleObj.attribution || '',
-      }).addTo(map);
-
-      tileLayerRef.current = layer;
-
-      // Glowing marker
-      const customPin = L.divIcon({
-        className: 'custom-map-pin',
-        html: `
-          <div class="pin-pulse-ring"></div>
-          <div class="pin-core"></div>
-        `,
-        iconSize: [24, 24],
-        iconAnchor: [12, 12],
-      });
-
-      const marker = L.marker([selectedLocation.lat, selectedLocation.lng], {
-        icon: customPin,
-      }).addTo(map);
-      markerRef.current = marker;
-
-      // Click on map to pick coordinate
-      map.on('click', async (e: any) => {
-        const { lat, lng } = e.latlng;
-        marker.setLatLng([lat, lng]);
-
-        try {
-          const res = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=14`
-          );
-          const data = await res.json();
-          const placeName =
-            data.address?.village ||
-            data.address?.town ||
-            data.address?.city ||
-            data.address?.county ||
-            data.address?.state ||
-            data.name ||
-            'Custom Coordinates';
-
-          setSelectedLocation({
-            name: placeName,
-            displayName: data.display_name || `${lat.toFixed(4)}°, ${lng.toFixed(4)}°`,
-            lat,
-            lng,
-          });
-        } catch {
-          setSelectedLocation({
-            name: `${lat.toFixed(4)}° N, ${lng.toFixed(4)}° E`,
-            displayName: `Coordinates: ${lat.toFixed(4)}°, ${lng.toFixed(4)}°`,
-            lat,
-            lng,
-          });
+        // Import Leaflet CSS if missing
+        if (!document.getElementById('leaflet-css')) {
+          const link = document.createElement('link');
+          link.id = 'leaflet-css';
+          link.rel = 'stylesheet';
+          link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+          document.head.appendChild(link);
         }
-      });
+
+        // Create map instance
+        const map = L.map(mapContainerRef.current, {
+          center: [selectedLocation.lat, selectedLocation.lng],
+          zoom: 11,
+          zoomControl: true,
+          attributionControl: false,
+        });
+
+        mapInstanceRef.current = map;
+
+        // Add active public tile layer
+        const styleObj = MAP_STYLES.find((s) => s.id === activeStyleId) || MAP_STYLES[0];
+        const layer = L.tileLayer(styleObj.url, {
+          maxZoom: 18,
+          subdomains: styleObj.subdomains || '',
+          className: styleObj.className || 'silver-surface-tile',
+          attribution: styleObj.attribution || '',
+        }).addTo(map);
+
+        tileLayerRef.current = layer;
+
+        // Glowing marker
+        const customPin = L.divIcon({
+          className: 'custom-map-pin',
+          html: `
+            <div class="pin-pulse-ring"></div>
+            <div class="pin-core"></div>
+          `,
+          iconSize: [24, 24],
+          iconAnchor: [12, 12],
+        });
+
+        const marker = L.marker([selectedLocation.lat, selectedLocation.lng], {
+          icon: customPin,
+        }).addTo(map);
+        markerRef.current = marker;
+
+        // Click on map to pick coordinate
+        map.on('click', async (e: any) => {
+          const { lat, lng } = e.latlng;
+          marker.setLatLng([lat, lng]);
+
+          try {
+            const res = await fetch(
+              `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=14`
+            );
+            const data = await res.json();
+            const placeName =
+              data.address?.village ||
+              data.address?.town ||
+              data.address?.city ||
+              data.address?.county ||
+              data.address?.state ||
+              data.name ||
+              'Custom Coordinates';
+
+            setSelectedLocation({
+              name: placeName,
+              displayName: data.display_name || `${lat.toFixed(4)}°, ${lng.toFixed(4)}°`,
+              lat,
+              lng,
+            });
+          } catch {
+            setSelectedLocation({
+              name: `${lat.toFixed(4)}° N, ${lng.toFixed(4)}° E`,
+              displayName: `Coordinates: ${lat.toFixed(4)}°, ${lng.toFixed(4)}°`,
+              lat,
+              lng,
+            });
+          }
+        });
+
+        // Listen to zoom changes
+        map.on('zoomend', () => {
+          const z = Math.round(map.getZoom());
+          setCurrentZoom(z);
+        });
+
+        // Listen to panning
+        map.on('moveend', () => {
+          const z = Math.round(map.getZoom());
+          setCurrentZoom(z);
+        });
+      } catch (err) {
+        console.error('Leaflet initialization error:', err);
+      }
     };
 
     initMap();
@@ -270,26 +362,105 @@ export default function CustomizerSection({ products, onOpenOrderModal }: Custom
     };
   }, []);
 
+  // Dynamic Centered High-Resolution Canvas Texture Generator
+  useEffect(() => {
+    let isCancelled = false;
+    const canvas = pendantCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    ctx.clearRect(0, 0, 512, 512);
+
+    const zoom = currentZoom;
+    const lat = selectedLocation.lat;
+    const lng = selectedLocation.lng;
+    const n = Math.pow(2, zoom);
+    const exactX = ((lng + 180) / 360) * n;
+    const latRad = (lat * Math.PI) / 180;
+    const exactY = ((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2) * n;
+    const centerTileX = Math.floor(exactX);
+    const centerTileY = Math.floor(exactY);
+    const subpixelX = (exactX - centerTileX) * 256;
+    const subpixelY = (exactY - centerTileY) * 256;
+
+    const centerX = 256;
+    const centerY = 256;
+
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        const tx = centerTileX + dx;
+        const ty = centerTileY + dy;
+        const drawX = centerX - subpixelX + dx * 256;
+        const drawY = centerY - subpixelY + dy * 256;
+
+        let tileUrl = '';
+        switch (activeStyleId) {
+          case 'satellite':
+            tileUrl = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${zoom}/${ty}/${tx}`;
+            break;
+          case 'roadmap':
+            tileUrl = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/${zoom}/${ty}/${tx}`;
+            break;
+          case 'terrain':
+            tileUrl = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Shaded_Relief/MapServer/tile/${zoom}/${ty}/${tx}`;
+            break;
+          case 'topographic':
+            tileUrl = `https://a.tile.opentopomap.org/${zoom}/${tx}/${ty}.png`;
+            break;
+          case 'dark-surface':
+          case 'silver-hillshade':
+            tileUrl = `https://server.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/tile/${zoom}/${ty}/${tx}`;
+            break;
+          case 'light-surface':
+          default:
+            tileUrl = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/${zoom}/${ty}/${tx}`;
+            break;
+        }
+
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+          if (!isCancelled && pendantCanvasRef.current) {
+            ctx.drawImage(img, drawX, drawY, 256, 256);
+          }
+        };
+        img.src = tileUrl;
+      }
+    }
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [selectedLocation.lat, selectedLocation.lng, currentZoom, activeStyleId]);
+
   // Handle map style layer switch cleanly without recreating Leaflet map instance
   const handleStyleSwitch = async (styleId: string) => {
     setActiveStyleId(styleId);
     if (!mapInstanceRef.current) return;
 
-    const L = (await import('leaflet')).default;
-    const styleObj = MAP_STYLES.find((s) => s.id === styleId) || MAP_STYLES[0];
+    try {
+      const LModule = await import('leaflet');
+      const L = (LModule as any).default || LModule;
+      if (!L.tileLayer) return;
 
-    if (tileLayerRef.current) {
-      mapInstanceRef.current.removeLayer(tileLayerRef.current);
+      const styleObj = MAP_STYLES.find((s) => s.id === styleId) || MAP_STYLES[0];
+
+      if (tileLayerRef.current) {
+        mapInstanceRef.current.removeLayer(tileLayerRef.current);
+      }
+
+      const newLayer = L.tileLayer(styleObj.url, {
+        maxZoom: 18,
+        subdomains: styleObj.subdomains || '',
+        className: styleObj.className || 'silver-surface-tile',
+        attribution: styleObj.attribution || '',
+      }).addTo(mapInstanceRef.current);
+
+      tileLayerRef.current = newLayer;
+    } catch (err) {
+      console.error('Error switching tile layer:', err);
     }
-
-    const newLayer = L.tileLayer(styleObj.url, {
-      maxZoom: 18,
-      subdomains: styleObj.subdomains || '',
-      className: styleObj.className || 'silver-surface-tile',
-      attribution: styleObj.attribution || '',
-    }).addTo(mapInstanceRef.current);
-
-    tileLayerRef.current = newLayer;
   };
 
   // Update map center when location is selected
@@ -411,7 +582,7 @@ export default function CustomizerSection({ products, onOpenOrderModal }: Custom
   const lngStr = `${Math.abs(selectedLocation.lng).toFixed(4)}° ${selectedLocation.lng >= 0 ? 'E' : 'W'}`;
 
   // Current static map tile image URL for pendant projection
-  const currentTileUrl = getStaticTileUrl(selectedLocation.lat, selectedLocation.lng, 12, activeStyleId);
+  const currentTileUrl = getStaticTileUrl(selectedLocation.lat, selectedLocation.lng, currentZoom, activeStyleId);
 
   return (
     <section className="section-padding customizer-section" id="customizer">
@@ -495,41 +666,94 @@ export default function CustomizerSection({ products, onOpenOrderModal }: Custom
                       </button>
                     </div>
 
-                    <div className="layers-options-list" role="radiogroup" aria-label="Select map layer style">
-                      {MAP_STYLES.map((style) => {
-                        const isSelected = activeStyleId === style.id;
-                        const thumbUrl = getStaticTileUrl(selectedLocation.lat, selectedLocation.lng, 12, style.id);
-                        return (
-                          <button
-                            key={style.id}
-                            type="button"
-                            role="radio"
-                            aria-checked={isSelected}
-                            aria-label={style.name}
-                            className={`layer-option-card${isSelected ? ' selected' : ''}`}
-                            onClick={() => {
-                              handleStyleSwitch(style.id);
-                              setIsLayerPanelOpen(false);
-                            }}
-                          >
-                            <div className="option-thumb-wrapper">
-                              <img
-                                src={thumbUrl}
-                                alt={style.name}
-                                className={`option-thumb-img style-${style.id}`}
-                                onError={(e) => {
-                                  (e.target as HTMLImageElement).src = style.fallbackThumb;
+                    <div className="layers-options-container" role="radiogroup" aria-label="Select map layer style">
+                      {/* Category: MAP */}
+                      <div className="layers-category-section">
+                        <div className="layers-category-header">
+                          <span className="layers-category-title">MAP</span>
+                          <span className="layers-category-subtitle">Geographic imagery & terrain</span>
+                        </div>
+                        <div className="layers-options-list">
+                          {MAP_STYLES.filter((s) => s.category === 'map').map((style) => {
+                            const isSelected = activeStyleId === style.id;
+                            const thumbUrl = getStaticTileUrl(selectedLocation.lat, selectedLocation.lng, 12, style.id);
+                            return (
+                              <button
+                                key={style.id}
+                                type="button"
+                                role="radio"
+                                aria-checked={isSelected}
+                                aria-label={style.name}
+                                className={`layer-option-card${isSelected ? ' selected' : ''}`}
+                                onClick={() => {
+                                  handleStyleSwitch(style.id);
+                                  setIsLayerPanelOpen(false);
                                 }}
-                              />
-                              <span className="style-icon-badge">{style.icon}</span>
-                            </div>
-                            <div className="option-info">
-                              <strong className="option-name">{style.name}</strong>
-                            </div>
-                            {isSelected && <span className="option-checkmark" aria-hidden="true">✓</span>}
-                          </button>
-                        );
-                      })}
+                              >
+                                <div className="option-thumb-wrapper">
+                                  <img
+                                    src={thumbUrl}
+                                    alt={style.name}
+                                    className={`option-thumb-img style-${style.id}`}
+                                    onError={(e) => {
+                                      (e.target as HTMLImageElement).src = style.fallbackThumb;
+                                    }}
+                                  />
+                                  <span className="style-icon-badge">{style.icon}</span>
+                                </div>
+                                <div className="option-info">
+                                  <strong className="option-name">{style.name}</strong>
+                                </div>
+                                {isSelected && <span className="option-checkmark" aria-hidden="true">✓</span>}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Category: JEWELLERY FINISH */}
+                      <div className="layers-category-section">
+                        <div className="layers-category-header">
+                          <span className="layers-category-title">JEWELLERY FINISH</span>
+                          <span className="layers-category-subtitle">Sterling silver treatments</span>
+                        </div>
+                        <div className="layers-options-list">
+                          {MAP_STYLES.filter((s) => s.category === 'jewellery').map((style) => {
+                            const isSelected = activeStyleId === style.id;
+                            const thumbUrl = getStaticTileUrl(selectedLocation.lat, selectedLocation.lng, 12, style.id);
+                            return (
+                              <button
+                                key={style.id}
+                                type="button"
+                                role="radio"
+                                aria-checked={isSelected}
+                                aria-label={style.name}
+                                className={`layer-option-card${isSelected ? ' selected' : ''}`}
+                                onClick={() => {
+                                  handleStyleSwitch(style.id);
+                                  setIsLayerPanelOpen(false);
+                                }}
+                              >
+                                <div className="option-thumb-wrapper">
+                                  <img
+                                    src={thumbUrl}
+                                    alt={style.name}
+                                    className={`option-thumb-img style-${style.id}`}
+                                    onError={(e) => {
+                                      (e.target as HTMLImageElement).src = style.fallbackThumb;
+                                    }}
+                                  />
+                                  <span className="style-icon-badge">{style.icon}</span>
+                                </div>
+                                <div className="option-info">
+                                  <strong className="option-name">{style.name}</strong>
+                                </div>
+                                {isSelected && <span className="option-checkmark" aria-hidden="true">✓</span>}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -612,87 +836,17 @@ export default function CustomizerSection({ products, onOpenOrderModal }: Custom
               </div>
             </div>
 
-            {/* Interactive 3D Turntable Stage */}
-            <div
-              className="pendant-3d-stage"
-              ref={previewBoxRef}
-              onMouseDown={(e) => handlePointerDown(e.clientX, e.clientY)}
-              onMouseMove={(e) => handlePointerMove(e.clientX, e.clientY)}
-              onMouseUp={handlePointerUp}
-              onMouseLeave={handlePointerUp}
-              onTouchStart={(e) => {
-                const t = e.touches[0];
-                handlePointerDown(t.clientX, t.clientY);
-              }}
-              onTouchMove={(e) => {
-                const t = e.touches[0];
-                handlePointerMove(t.clientX, t.clientY);
-              }}
-              onTouchEnd={handlePointerUp}
-            >
-              {/* Dynamic 3D Pendant Model */}
-              <div
-                className="pendant-3d-model"
-                style={{
-                  transform: `perspective(900px) rotateX(${displayRot.rotX}deg) rotateY(${displayRot.rotY}deg)`,
-                }}
-              >
-                {/* Silver Hanging Bail */}
-                <div className="pendant-bail">
-                  <div className="bail-inner" />
-                </div>
-
-                {/* 3D Liquid Silver Body with Pure Engraved Surface Topography */}
-                <div className="pendant-large shiny-emblem preview-pendant-body">
-                  {/* Dynamic Specular Highlights */}
-                  <div
-                    className="specular-reflection-surface"
-                    style={{
-                      transform: `translate(${displayRot.rotY * 1.8}px, ${displayRot.rotX * 1.5}px)`,
-                    }}
-                  />
-
-                  {/* Hole connector */}
-                  <div className="pendant-hole">
-                    <div className="hole-rim-highlight" />
-                  </div>
-
-                  {/* PURE SURFACE TERRAIN TEXTURE MASK (No Map Labels / Only Topography Relief) */}
-                  <div className="pendant-map-texture-mask">
-                    <img
-                      src={currentTileUrl}
-                      alt="Pure Silver Surface Topography Texture"
-                      className={`pendant-face-tile pure-surface-relief style-${activeStyleId}`}
-                    />
-                    <div className="pendant-silver-etch-grain" />
-                  </div>
-
-                  {/* Topographical Contour Isolines */}
-                  <div className="engraved-terrain-layer">
-                    <span className="contour-line contour-1" />
-                    <span className="contour-line contour-2" />
-                    <span className="contour-line contour-3" />
-                    <span className="contour-line contour-4" />
-                    <span className="contour-line contour-5" />
-                  </div>
-
-                  {/* Surface Engraved Crosshair & Coordinates Monogram */}
-                  <div className="engraved-location-surface">
-                    <div className="engraved-pin-crosshair">
-                      <div className="crosshair-ring" />
-                      <div className="crosshair-dot" />
-                    </div>
-                    <span className="engraved-location-title">{selectedLocation.name.toUpperCase()}</span>
-                    <span className="engraved-coords-text">{latStr} · {lngStr}</span>
-                    {engravingText && (
-                      <span className="engraved-custom-text">&ldquo;{engravingText}&rdquo;</span>
-                    )}
-                  </div>
-
-                  {/* Polished Rim Highlight */}
-                  <div className="specular-rim-highlight" />
-                </div>
-              </div>
+            {/* Interactive Three.js 3D Sterling Silver Terrain Relief Pendant */}
+            <div className="pendant-3d-stage">
+              <ThreePendantViewer
+                lat={selectedLocation.lat}
+                lng={selectedLocation.lng}
+                zoom={currentZoom}
+                activeStyleId={activeStyleId}
+                locationName={selectedLocation.name}
+                sizeMm={selectedProduct?.sizeMm || 20}
+                engravingText={engravingText}
+              />
             </div>
 
             {/* Size Selector in Customizer */}

@@ -37,15 +37,25 @@ function GallerySkeletons() {
   );
 }
 
+const FALLBACK_GALLERY_ITEMS: GalleryItem[] = [
+  { id: 1, index: 1, name: 'Mountain Ridge', subtitle: 'Handmade terrain', bgColor: '#d7d5cb', darkPendant: false, isActive: true },
+  { id: 2, index: 2, name: 'Black Terrain', subtitle: 'Hand-finished', bgColor: '#22221f', darkPendant: true, isActive: true },
+  { id: 3, index: 3, name: 'Your Coordinates', subtitle: 'Custom landscape', bgColor: '#c6c4bb', darkPendant: false, isActive: true },
+];
+
 export default function Gallery() {
-  const [items, setItems] = useState<GalleryItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [items, setItems] = useState<GalleryItem[]>(FALLBACK_GALLERY_ITEMS);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     getGallery()
-      .then(setItems)
-      .catch(() => setError('Could not load gallery. Make sure the backend is running.'))
+      .then((data) => {
+        if (data && data.length > 0) setItems(data);
+      })
+      .catch(() => {
+        // Silently use the fallback items without blocking the UI
+      })
       .finally(() => setLoading(false));
   }, []);
 
