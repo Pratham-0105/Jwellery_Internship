@@ -1,6 +1,6 @@
 'use client';
 // src/components/CustomizerSection.tsx
-// Interactive Customization Workstation: Pure Silver Surface Terrain Map + 360° 3D Engraved Silver Pendant Preview + Order Placement
+// Interactive Customization Workstation: Pure Silver Surface Terrain Map + Google Maps Style Layers Control + 360° 3D Engraved Silver Pendant Preview + Order Placement
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Product, formatPrice } from '@/lib/api';
@@ -41,6 +41,7 @@ const MAP_STYLES = [
     icon: '✨',
     url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/tile/{z}/{y}/{x}',
     subdomains: '',
+    fallbackThumb: 'https://server.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/tile/12/1550/2060',
   },
   {
     id: 'dark-surface',
@@ -48,6 +49,7 @@ const MAP_STYLES = [
     icon: '🌑',
     url: 'https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png',
     subdomains: 'abcd',
+    fallbackThumb: 'https://a.basemaps.cartocdn.com/dark_nolabels/12/2048/1365.png',
   },
   {
     id: 'topo-contours',
@@ -55,6 +57,7 @@ const MAP_STYLES = [
     icon: '🏔️',
     url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
     subdomains: 'abc',
+    fallbackThumb: 'https://a.tile.opentopomap.org/12/2048/1365.png',
   },
   {
     id: 'light-surface',
@@ -62,10 +65,11 @@ const MAP_STYLES = [
     icon: '💎',
     url: 'https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png',
     subdomains: 'abcd',
+    fallbackThumb: 'https://a.basemaps.cartocdn.com/light_nolabels/12/2048/1365.png',
   },
 ];
 
-// Calculate static map tile URL for selected coordinates
+// Calculate static map tile URL for selected coordinates & style
 function getStaticTileUrl(lat: number, lng: number, zoom: number, styleId: string) {
   const n = Math.pow(2, zoom);
   const x = Math.floor(((lng + 180) / 360) * n);
@@ -99,12 +103,14 @@ export default function CustomizerSection({ products, onOpenOrderModal }: Custom
 
   // Map customization state
   const [activeStyleId, setActiveStyleId] = useState<string>('silver-hillshade');
+  const [isLayerPanelOpen, setIsLayerPanelOpen] = useState<boolean>(false);
 
   // Map & DOM references
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
   const tileLayerRef = useRef<any>(null);
   const markerRef = useRef<any>(null);
+  const layerControlRef = useRef<HTMLDivElement>(null);
 
   // 360° 3D Pendant Interactive State
   const previewBoxRef = useRef<HTMLDivElement>(null);
@@ -120,6 +126,28 @@ export default function CustomizerSection({ products, onOpenOrderModal }: Custom
   });
 
   const [displayRot, setDisplayRot] = useState({ rotX: 10, rotY: 15 });
+
+  // Handle click outside & Escape key to close floating layer panel
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (layerControlRef.current && !layerControlRef.current.contains(event.target as Node)) {
+        setIsLayerPanelOpen(false);
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsLayerPanelOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
 
   // Initialize product selection
   useEffect(() => {
@@ -149,7 +177,7 @@ export default function CustomizerSection({ products, onOpenOrderModal }: Custom
         document.head.appendChild(link);
       }
 
-      // Create map
+      // Create map instance
       const map = L.map(mapContainerRef.current, {
         center: [selectedLocation.lat, selectedLocation.lng],
         zoom: 11,
@@ -159,7 +187,7 @@ export default function CustomizerSection({ products, onOpenOrderModal }: Custom
 
       mapInstanceRef.current = map;
 
-      // Add silver hillshade tile layer
+      // Add active tile layer
       const styleObj = MAP_STYLES.find((s) => s.id === activeStyleId) || MAP_STYLES[0];
       const layer = L.tileLayer(styleObj.url, {
         maxZoom: 18,
@@ -232,7 +260,7 @@ export default function CustomizerSection({ products, onOpenOrderModal }: Custom
     };
   }, []);
 
-  // Handle map style layer switch
+  // Handle map style layer switch cleanly without recreating Leaflet map instance
   const handleStyleSwitch = async (styleId: string) => {
     setActiveStyleId(styleId);
     if (!mapInstanceRef.current) return;
@@ -371,7 +399,7 @@ export default function CustomizerSection({ products, onOpenOrderModal }: Custom
   const latStr = `${Math.abs(selectedLocation.lat).toFixed(4)}° ${selectedLocation.lat >= 0 ? 'N' : 'S'}`;
   const lngStr = `${Math.abs(selectedLocation.lng).toFixed(4)}° ${selectedLocation.lng >= 0 ? 'E' : 'W'}`;
 
-  // Current static map tile image URL
+  // Current static map tile image URL for pendant projection
   const currentTileUrl = getStaticTileUrl(selectedLocation.lat, selectedLocation.lng, 12, activeStyleId);
 
   return (
@@ -428,28 +456,97 @@ export default function CustomizerSection({ products, onOpenOrderModal }: Custom
               )}
             </div>
 
-            {/* Map Surface Style Switcher Bar */}
-            <div className="map-style-bar">
-              <span className="style-label">SILVER MAP TERRAIN:</span>
-              <div className="style-buttons">
-                {MAP_STYLES.map((style) => (
-                  <button
-                    key={style.id}
-                    className={`style-btn${activeStyleId === style.id ? ' active' : ''}`}
-                    onClick={() => handleStyleSwitch(style.id)}
-                  >
-                    <span>{style.icon}</span>
-                    <strong>{style.name}</strong>
-                  </button>
-                ))}
-              </div>
-            </div>
-
             {/* Interactive Leaflet Map Container */}
             <div className="leaflet-map-wrapper silver-terrain-wrapper">
               <div ref={mapContainerRef} className="leaflet-map-element" />
+
               <div className="map-hint-badge">
                 <span>📍 Click anywhere on map to pin custom coordinates</span>
+              </div>
+
+              {/* Google Maps Style Floating Layers Control */}
+              <div className="map-layers-control-container" ref={layerControlRef}>
+                {/* Floating Layer Selection Panel */}
+                {isLayerPanelOpen && (
+                  <div
+                    className="map-layers-panel"
+                    role="dialog"
+                    aria-label="Map style selection"
+                  >
+                    <div className="layers-panel-header">
+                      <span className="panel-title">MAP LAYERS</span>
+                      <button
+                        className="panel-close-btn"
+                        onClick={() => setIsLayerPanelOpen(false)}
+                        aria-label="Close layers panel"
+                      >
+                        ✕
+                      </button>
+                    </div>
+
+                    <div className="layers-options-list" role="radiogroup" aria-label="Select map layer style">
+                      {MAP_STYLES.map((style) => {
+                        const isSelected = activeStyleId === style.id;
+                        const thumbUrl = getStaticTileUrl(selectedLocation.lat, selectedLocation.lng, 12, style.id);
+                        return (
+                          <button
+                            key={style.id}
+                            type="button"
+                            role="radio"
+                            aria-checked={isSelected}
+                            aria-label={style.name}
+                            className={`layer-option-card${isSelected ? ' selected' : ''}`}
+                            onClick={() => {
+                              handleStyleSwitch(style.id);
+                              setIsLayerPanelOpen(false);
+                            }}
+                          >
+                            <div className="option-thumb-wrapper">
+                              <img
+                                src={thumbUrl}
+                                alt={style.name}
+                                className="option-thumb-img"
+                                onError={(e) => {
+                                  (e.target as HTMLImageElement).src = style.fallbackThumb;
+                                }}
+                              />
+                              <span className="style-icon-badge">{style.icon}</span>
+                            </div>
+                            <div className="option-info">
+                              <strong className="option-name">{style.name}</strong>
+                            </div>
+                            {isSelected && <span className="option-checkmark" aria-hidden="true">✓</span>}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Floating Layers Control Button */}
+                <button
+                  type="button"
+                  className={`map-layers-toggle-btn${isLayerPanelOpen ? ' active' : ''}`}
+                  onClick={() => setIsLayerPanelOpen((prev) => !prev)}
+                  aria-label="Toggle map layers"
+                  aria-expanded={isLayerPanelOpen}
+                  id="map-layers-toggle-btn"
+                >
+                  <svg
+                    className="layers-icon"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <polygon points="12 2 2 7 12 12 22 7 12 2" />
+                    <polyline points="2 17 12 22 22 17" />
+                    <polyline points="2 12 12 17 22 12" />
+                  </svg>
+                  <span>Layers</span>
+                </button>
               </div>
             </div>
 
