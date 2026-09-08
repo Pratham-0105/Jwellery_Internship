@@ -1,10 +1,16 @@
 'use client';
 // src/components/ThreePendantViewer.tsx
-// High-Fidelity 3D Sterling Silver Terrain Relief Pendant Viewer (WebGL / Three.js)
-// Replicates the ne-rovno.ru physical engraved terrain medallion behavior.
+// High-Fidelity 3D Sterling Silver CIRCULAR Terrain Pendant — precisely matched to reference.
+// Circular disc body | Flat teardrop bail (narrow from front, full loop from side) | 100% terrain face
 
 import React, { useEffect, useRef } from 'react';
 import * as THREE from 'three';
+
+// ── Module-level constants shared across effects ─────────────────────────────
+const COIN_RADIUS   = 1.80;            // circular pendant radius
+const COIN_THICKNESS = 0.26;           // physical side depth (visible when rotated)
+const HALF_DEPTH    = COIN_THICKNESS / 2;  // 0.13
+const FACE_SIZE     = COIN_RADIUS * 2; // 3.60 — square plane matching the circle
 
 interface ThreePendantViewerProps {
   lat: number;
@@ -16,621 +22,621 @@ interface ThreePendantViewerProps {
   engravingText?: string;
 }
 
-export default function ThreePendantViewer({
-  lat,
-  lng,
-  zoom,
-  activeStyleId,
-  locationName,
-  sizeMm = 20,
-  engravingText,
-}: ThreePendantViewerProps) {
-  const mountRef = useRef<HTMLDivElement>(null);
-  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
-  const sceneRef = useRef<THREE.Scene | null>(null);
-  const coinGroupRef = useRef<THREE.Group | null>(null);
-  const faceMeshRef = useRef<THREE.Mesh | null>(null);
-  const animFrameIdRef = useRef<number>(0);
-  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+// ── Studio Environment ───────────────────────────────────────────────────────
+function createStudioEnvironment(renderer: THREE.WebGLRenderer): THREE.Texture {
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  pmrem.compileEquirectangularShader();
+  const c = document.createElement('canvas');
+  c.width = 1024; c.height = 512;
+  const ctx = c.getContext('2d')!;
 
-  // Rotation & Drag state
-  const rotState = useRef({
-    targetRotY: 0.28,
-    targetRotX: 0.18,
-    currentRotY: 0.28,
-    currentRotX: 0.18,
-    isDragging: false,
-    startX: 0,
-    startY: 0,
+  const bg = ctx.createLinearGradient(0, 0, 0, 512);
+  bg.addColorStop(0, '#1e2532'); bg.addColorStop(0.42, '#36404e');
+  bg.addColorStop(0.6, '#4c5668');  bg.addColorStop(1, '#12151a');
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, 1024, 512);
+
+  // Key softbox — bright white glint on silver mountain crests
+  const k = ctx.createRadialGradient(475, 108, 8, 475, 108, 272);
+  k.addColorStop(0, '#ffffff'); k.addColorStop(0.22, '#f8fcff');
+  k.addColorStop(0.62, 'rgba(255,255,255,0.40)'); k.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = k; ctx.fillRect(206, 0, 536, 350);
+
+  // Left fill
+  const lf = ctx.createRadialGradient(115, 215, 6, 115, 215, 178);
+  lf.addColorStop(0, '#ffffff'); lf.addColorStop(0.42, 'rgba(236,246,255,0.46)');
+  lf.addColorStop(1, 'rgba(236,246,255,0)');
+  ctx.fillStyle = lf; ctx.fillRect(0, 55, 285, 275);
+
+  // Right rim
+  const rf = ctx.createRadialGradient(878, 268, 6, 878, 268, 208);
+  rf.addColorStop(0, '#e6f2ff'); rf.addColorStop(0.42, 'rgba(230,242,255,0.50)');
+  rf.addColorStop(1, 'rgba(230,242,255,0)');
+  ctx.fillStyle = rf; ctx.fillRect(688, 68, 336, 364);
+
+  const tex = new THREE.CanvasTexture(c);
+  tex.mapping = THREE.EquirectangularReflectionMapping;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const env = pmrem.fromEquirectangular(tex).texture;
+  pmrem.dispose(); tex.dispose();
+  return env;
+}
+
+// ── Back Engraving Texture ───────────────────────────────────────────────────
+function createBackTex(text?: string): THREE.CanvasTexture {
+  const c = document.createElement('canvas');
+  c.width = c.height = 512;
+  const ctx = c.getContext('2d')!;
+  ctx.fillStyle = '#d8dde8'; ctx.fillRect(0, 0, 512, 512);
+  ctx.strokeStyle = 'rgba(255,255,255,0.07)'; ctx.lineWidth = 1;
+  for (let r = 18; r < 245; r += 7) {
+    ctx.beginPath(); ctx.arc(256, 256, r, 0, Math.PI * 2); ctx.stroke();
+  }
+  ctx.fillStyle = '#667080'; ctx.font = '600 12px system-ui,sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('TERRAIN JEWELLERY  ·  925 SILVER', 256, 218);
+  if (text && text.trim()) {
+    ctx.fillStyle = '#38424e'; ctx.font = '700 18px system-ui,sans-serif';
+    ctx.fillText(`"${text.trim()}"`, 256, 262);
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace; return tex;
+}
+
+// ── Circular Alpha Mask ──────────────────────────────────────────────────────
+function createCircleMask(): THREE.CanvasTexture {
+  const c = document.createElement('canvas');
+  c.width = c.height = 512;
+  const ctx = c.getContext('2d')!;
+  ctx.fillStyle = '#000000'; ctx.fillRect(0, 0, 512, 512);
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath(); ctx.arc(256, 256, 253, 0, Math.PI * 2); ctx.fill();
+  return new THREE.CanvasTexture(c);
+}
+
+// ── Flat Teardrop Bail Geometry ──────────────────────────────────────────────
+// Creates a FLAT RING in teardrop shape (open at bottom).
+// Shape is drawn in the XY plane and extruded in Z (thin), then rotated 90° around Y so:
+//   • Viewed from FRONT (+Z): shows thin edge strip  ← narrow bail from front
+//   • Viewed from SIDE  (+X): shows full teardrop outline ← full loop from side
+function createFlatTearDropBail(): THREE.BufferGeometry {
+  const bW  = 0.24;   // half-width of teardrop
+  const bH  = 0.80;   // total height of teardrop
+  const bTH = 0.072;  // ring wall thickness
+  const bED = 0.060;  // extrusion depth (thin flat sheet)
+
+  // ── Outer teardrop silhouette (open at bottom) ──
+  const outer = new THREE.Shape();
+  outer.moveTo(-bW, 0);                                // bottom-left opening
+  outer.lineTo(-bW, bH * 0.38);                       // left side straight
+  outer.bezierCurveTo(-bW, bH * 0.72, -bW * 0.55, bH, 0, bH);   // left arch → top
+  outer.bezierCurveTo(bW * 0.55, bH, bW, bH * 0.72, bW, bH * 0.38); // top → right arch
+  outer.lineTo(bW, 0);                                 // right side to opening
+
+  // ── Inner hole (creates the ring/frame wall) ──
+  const iW = bW - bTH;
+  const iH = bH - bTH * 1.15;
+  const hole = new THREE.Path();
+  hole.moveTo(-iW, bTH);                               // inner bottom-left
+  hole.lineTo(-iW, bH * 0.38);                        // inner left straight
+  hole.bezierCurveTo(-iW, bH * 0.72 - bTH * 0.4, -iW * 0.55, iH, 0, iH); // inner left arch
+  hole.bezierCurveTo(iW * 0.55, iH, iW, bH * 0.72 - bTH * 0.4, iW, bH * 0.38); // inner right arch
+  hole.lineTo(iW, bTH);                                // inner right to bottom
+  hole.lineTo(-iW, bTH);                              // close hole
+  outer.holes.push(hole);
+
+  const geom = new THREE.ExtrudeGeometry(outer, {
+    depth: bED,
+    bevelEnabled: true,
+    bevelSegments: 3,
+    steps: 1,
+    bevelSize: 0.008,
+    bevelThickness: 0.008,
+    curveSegments: 52,
+  });
+  geom.center(); // center in Z (extrusion direction)
+  return geom;
+}
+
+// ── Main Component ───────────────────────────────────────────────────────────
+export default function ThreePendantViewer({
+  lat, lng, zoom, activeStyleId, locationName, sizeMm = 20, engravingText,
+}: ThreePendantViewerProps) {
+  const mountRef    = useRef<HTMLDivElement>(null);
+  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
+  const sceneRef    = useRef<THREE.Scene | null>(null);
+  const groupRef    = useRef<THREE.Group | null>(null);
+  const faceMeshRef = useRef<THREE.Mesh | null>(null);
+  const faceGeomRef = useRef<THREE.PlaneGeometry | null>(null);
+  const backMeshRef = useRef<THREE.Mesh | null>(null);
+  const maskTexRef  = useRef<THREE.CanvasTexture | null>(null);
+  const animIdRef   = useRef<number>(0);
+  const cameraRef   = useRef<THREE.PerspectiveCamera | null>(null);
+
+  const rot = useRef({
+    targetRotY: -0.18, targetRotX: 0.14,
+    currentRotY: -0.18, currentRotX: 0.14,
+    isDragging: false, startX: 0, startY: 0,
     lastInteraction: Date.now(),
   });
 
-  // ── 1. Setup Three.js WebGL Scene ─────────────────────────────────────────
+  // ── Scene Setup (runs once) ──────────────────────────────────────────────
   useEffect(() => {
     if (!mountRef.current) return;
-    const container = mountRef.current;
-    const width = container.clientWidth || 320;
-    const height = container.clientHeight || 360;
+    const el = mountRef.current;
+    const W = el.clientWidth || 340, H = el.clientHeight || 380;
 
-    // Scene
     const scene = new THREE.Scene();
     sceneRef.current = scene;
 
-    // Camera
-    const camera = new THREE.PerspectiveCamera(36, width / height, 0.1, 100);
+    const camera = new THREE.PerspectiveCamera(34, W / H, 0.1, 100);
     cameraRef.current = camera;
 
-    // WebGL Renderer
-    const renderer = new THREE.WebGLRenderer({
-      antialias: true,
-      alpha: true,
-      powerPreference: 'high-performance',
-    });
-    renderer.setSize(width, height);
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
+    renderer.setSize(W, H);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.35;
+    renderer.toneMappingExposure = 1.38;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
-    container.appendChild(renderer.domElement);
+    el.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
-    // ── Studio Lighting (Optimized for Silver Metallic Relief) ───────────────
-    // Ambient fill keeps crevices dark silver rather than pitch black
-    const ambientLight = new THREE.AmbientLight(0xf0f4f8, 1.1);
-    scene.add(ambientLight);
+    scene.environment = createStudioEnvironment(renderer);
 
-    // Primary Directional Key Light (sharp grazing angle creates strong relief contrast)
-    const keyLight = new THREE.DirectionalLight(0xffffff, 2.6);
-    keyLight.position.set(3.5, 4.5, 4.0);
-    scene.add(keyLight);
+    // ── Studio Lighting —— crafted for polished sterling silver terrain ──
+    scene.add(new THREE.AmbientLight(0xf2f6fc, 1.6));
+    const key = new THREE.DirectionalLight(0xffffff, 3.2);
+    key.position.set(3.8, 5.0, 4.8); scene.add(key);
+    const fill = new THREE.DirectionalLight(0xd2e0f0, 1.6);
+    fill.position.set(-4.5, -2.5, 3.0); scene.add(fill);
+    const top = new THREE.DirectionalLight(0xffffff, 2.0);
+    top.position.set(0, 6.5, 2.5); scene.add(top);
+    const back = new THREE.DirectionalLight(0xc6d4e4, 0.9);
+    back.position.set(0, -3.5, -4.0); scene.add(back);
 
-    // Secondary Cool Rim/Fill Light (enhances metallic edge curvature)
-    const fillLight = new THREE.DirectionalLight(0xcfd8dc, 1.4);
-    fillLight.position.set(-3.5, -2.0, 3.0);
-    scene.add(fillLight);
+    // ── Pendant Group ────────────────────────────────────────────────────
+    const group = new THREE.Group();
+    groupRef.current = group;
 
-    // Overhead Specular Light (glints off summit crests and ridges)
-    const topLight = new THREE.DirectionalLight(0xffffff, 1.8);
-    topLight.position.set(0, 5.0, 2.0);
-    scene.add(topLight);
-
-    // ── 3D Coin Medallion Assembly ──────────────────────────────────────────
-    const coinGroup = new THREE.Group();
-    coinGroupRef.current = coinGroup;
-
-    // 1. Solid Sterling Silver Coin Cylinder Body (Thickness & Side walls)
-    const bodyGeom = new THREE.CylinderGeometry(1.82, 1.82, 0.18, 96, 1);
-    const bodyMat = new THREE.MeshStandardMaterial({
-      color: new THREE.Color(0xd4d9e2),
-      metalness: 0.92,
-      roughness: 0.22,
+    // Shared silver material factory
+    const mkSilver = (rough: number) => new THREE.MeshStandardMaterial({
+      color: new THREE.Color(0xe2eaf6), metalness: 0.97, roughness: rough,
     });
+
+    // 1. ── Perfectly circular coin body (128 segments = smooth) ──────────
+    const bodyGeom = new THREE.CylinderGeometry(COIN_RADIUS, COIN_RADIUS, COIN_THICKNESS, 128, 1);
+    const bodyMat  = mkSilver(0.18);
     const bodyMesh = new THREE.Mesh(bodyGeom, bodyMat);
-    bodyMesh.rotation.x = Math.PI / 2;
-    coinGroup.add(bodyMesh);
+    bodyMesh.rotation.x = Math.PI / 2; // disc faces +Z (camera direction)
+    group.add(bodyMesh);
 
-    // 2. Polished Outer Chamfer Rim (The thin realistic metallic edge ~2% radius)
-    const rimGeom = new THREE.TorusGeometry(1.80, 0.032, 24, 96);
-    const rimMat = new THREE.MeshStandardMaterial({
-      color: new THREE.Color(0xf1f5f9),
-      metalness: 0.96,
-      roughness: 0.12,
-    });
+    // 2. ── Raised polished bezel rim (torus around front face edge) ──────
+    const rimGeom = new THREE.TorusGeometry(COIN_RADIUS - 0.02, 0.052, 22, 128);
+    const rimMat  = mkSilver(0.11);
     const rimMesh = new THREE.Mesh(rimGeom, rimMat);
-    rimMesh.position.z = 0.091;
-    coinGroup.add(rimMesh);
+    rimMesh.position.z = HALF_DEPTH + 0.015;
+    group.add(rimMesh);
 
-    // 3. Front Face Circular Relief Disc (Where terrain heightmap is projected)
-    // 1.78 radius gives exactly 97.8% surface coverage with only a razor-thin 1.80 rim
-    const faceGeom = new THREE.CircleGeometry(1.78, 128);
-    const initialFaceMat = new THREE.MeshStandardMaterial({
-      color: new THREE.Color(0xdde2eb),
-      metalness: 0.86,
-      roughness: 0.28,
+    // 3. ── Back face ──────────────────────────────────────────────────────
+    const backGeom = new THREE.CircleGeometry(COIN_RADIUS - 0.018, 128);
+    const backMat  = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(0xd4dae6), metalness: 0.92, roughness: 0.25,
+      map: createBackTex(engravingText),
     });
-    const faceMesh = new THREE.Mesh(faceGeom, initialFaceMat);
-    faceMesh.position.z = 0.092; // sits right at the front surface
-    coinGroup.add(faceMesh);
+    const backMesh = new THREE.Mesh(backGeom, backMat);
+    backMesh.position.z = -HALF_DEPTH - 0.016;
+    backMesh.rotation.y  = Math.PI;
+    group.add(backMesh);
+    backMeshRef.current = backMesh;
+
+    // 4. ── Front face terrain plane ───────────────────────────────────────
+    const faceGeom = new THREE.PlaneGeometry(FACE_SIZE, FACE_SIZE, 200, 200);
+    faceGeomRef.current = faceGeom;
+
+    const maskTex = createCircleMask();
+    maskTexRef.current = maskTex;
+
+    const initFaceMat = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(0xf0f6fc), metalness: 0.97, roughness: 0.15,
+      alphaMap: maskTex, alphaTest: 0.5,
+    });
+    const faceMesh = new THREE.Mesh(faceGeom, initFaceMat);
+    faceMesh.position.z = HALF_DEPTH + 0.005;
+    group.add(faceMesh);
     faceMeshRef.current = faceMesh;
 
-    // 4. Hanging Silver Bail Loop at Top
-    const bailShape = new THREE.Shape();
-    bailShape.moveTo(-0.16, 0);
-    bailShape.lineTo(-0.16, 0.46);
-    bailShape.quadraticCurveTo(-0.16, 0.62, 0, 0.62);
-    bailShape.quadraticCurveTo(0.16, 0.62, 0.16, 0.46);
-    bailShape.lineTo(0.16, 0);
-    bailShape.closePath();
-
-    const holePath = new THREE.Path();
-    holePath.moveTo(-0.09, 0.08);
-    holePath.lineTo(-0.09, 0.44);
-    holePath.quadraticCurveTo(-0.09, 0.53, 0, 0.53);
-    holePath.quadraticCurveTo(0.09, 0.53, 0.09, 0.44);
-    holePath.lineTo(0.09, 0.08);
-    holePath.closePath();
-    bailShape.holes.push(holePath);
-
-    const extrudeSettings = {
-      depth: 0.12,
-      bevelEnabled: true,
-      bevelSegments: 4,
-      steps: 1,
-      bevelSize: 0.02,
-      bevelThickness: 0.02,
-    };
-    const bailGeom = new THREE.ExtrudeGeometry(bailShape, extrudeSettings);
-    bailGeom.center();
-    const bailMat = new THREE.MeshStandardMaterial({
-      color: new THREE.Color(0xe2e8f0),
-      metalness: 0.94,
-      roughness: 0.18,
-    });
+    // 5. ── Flat Teardrop Bail ─────────────────────────────────────────────
+    // The bail is a flat open-ring in a teardrop shape.
+    // Oriented so the flat face is perpendicular to pendant face:
+    //   → From front: looks like a narrow vertical strip
+    //   → From side:  shows the full teardrop/oval silhouette
+    const bailGeom = createFlatTearDropBail();
+    const bailMat  = mkSilver(0.12);
     const bailMesh = new THREE.Mesh(bailGeom, bailMat);
-    bailMesh.position.set(0, 1.98, 0);
-    coinGroup.add(bailMesh);
 
-    // 5. Center the entire medallion assembly (including bail and bottom rim) exactly at (0, 0, 0)
-    const bbox = new THREE.Box3().setFromObject(coinGroup);
-    const center = new THREE.Vector3();
-    bbox.getCenter(center);
-    coinGroup.children.forEach((child) => {
-      child.position.y -= center.y;
-    });
+    // Rotate so shape (drawn in XY plane) lies in YZ plane after rotation
+    bailMesh.rotation.y = Math.PI / 2;
 
-    scene.add(coinGroup);
+    // Position at top of coin. The teardrop shape has height 0.80 centered in Z after .center().
+    // We created it open at y=0 to y=0.80, so center is at y=0.40.
+    // After rotation, the shape's Y remains Y. Position it so the bottom touches the coin top rim.
+    const bailShapeHeight = 0.80;
+    bailMesh.position.set(0, COIN_RADIUS + bailShapeHeight * 0.5 - 0.06, 0);
+    group.add(bailMesh);
 
-    // 6. Responsive Camera Framing (guarantees full bail, face & bottom rim visible with comfortable padding)
-    const updateCameraFraming = (cam: THREE.PerspectiveCamera, w: number, h: number, curSizeMm: number) => {
-      const aspect = w / h;
-      cam.aspect = aspect;
+    // ── Center entire group vertically ──────────────────────────────────
+    const box = new THREE.Box3().setFromObject(group);
+    const ctr = new THREE.Vector3();
+    box.getCenter(ctr);
+    group.children.forEach(ch => { ch.position.y -= ctr.y; });
+    scene.add(group);
 
-      const fovRad = THREE.MathUtils.degToRad(cam.fov / 2);
-
-      // Scale factor corresponding to physical size selection (20mm baseline)
-      const scaleFactor = 1.0 + ((curSizeMm - 20) / 20) * 0.16;
-
-      // Complete vertical height including full bail and bottom rim is ~4.15 units
-      const totalHeight = 4.15 * scaleFactor;
-      const totalWidth = 3.66 * scaleFactor;
-      // Diagonal bounding profile accounting for 360° turntable rotation tilt
-      const maxDiag = Math.hypot(totalWidth, totalHeight) * 0.90;
-
-      // 18% comfortable safety margin ensures visible space above the bail and below the bottom
-      const padding = 1.18;
-
-      const distV = (totalHeight * padding) / (2 * Math.tan(fovRad));
-      const distH = (totalWidth * padding) / (2 * Math.tan(fovRad) * Math.max(aspect, 0.5));
-      const distDiag = (maxDiag * padding) / (2 * Math.tan(fovRad) * Math.min(Math.max(aspect, 0.75), 1.0));
-
-      const finalDistance = Math.max(distV, distH, distDiag);
-      cam.position.set(0, 0, finalDistance);
+    // ── Camera framing ──────────────────────────────────────────────────
+    const frame = (cam: THREE.PerspectiveCamera, w: number, h: number, mm: number) => {
+      cam.aspect = w / h;
+      const fovR = THREE.MathUtils.degToRad(cam.fov / 2);
+      const s = 1.0 + ((mm - 20) / 20) * 0.14;
+      // Total height: coin diam (3.60) + bail height (0.80) = ~4.40, width = 3.60
+      const tH = 4.42 * s, tW = 3.62 * s;
+      const diag = Math.hypot(tW, tH) * 0.88;
+      const pad  = 1.14;
+      const dV   = (tH * pad) / (2 * Math.tan(fovR));
+      const dH   = (tW * pad) / (2 * Math.tan(fovR) * Math.max(cam.aspect, 0.45));
+      const dD   = (diag * pad) / (2 * Math.tan(fovR) * Math.min(Math.max(cam.aspect, 0.7), 1.0));
+      cam.position.set(0, 0, Math.max(dV, dH, dD));
       cam.lookAt(0, 0, 0);
       cam.updateProjectionMatrix();
     };
+    frame(camera, W, H, sizeMm);
 
-    updateCameraFraming(camera, width, height, sizeMm);
-
-    // ── Animation / Turntable Render Loop ───────────────────────────────────
-    let lastTime = performance.now();
-    const render = () => {
-      animFrameIdRef.current = requestAnimationFrame(render);
+    // ── Render loop ──────────────────────────────────────────────────────
+    const tick = () => {
+      animIdRef.current = requestAnimationFrame(tick);
       const now = performance.now();
-      const dt = Math.min((now - lastTime) / 1000, 0.1);
-      lastTime = now;
-
-      const state = rotState.current;
-
-      // Gentle natural idle breathing sway when user isn't interacting
-      if (!state.isDragging && now - state.lastInteraction > 3000) {
-        state.targetRotY += Math.sin(now * 0.001) * 0.0015;
+      const r = rot.current;
+      if (!r.isDragging && now - r.lastInteraction > 3500) {
+        r.targetRotY += Math.sin(now * 0.00072) * 0.00095;
       }
-
-      // Smooth damping interpolation (Lerp)
-      state.currentRotY += (state.targetRotY - state.currentRotY) * (state.isDragging ? 0.25 : 0.08);
-      state.currentRotX += (state.targetRotX - state.currentRotX) * (state.isDragging ? 0.25 : 0.08);
-
-      if (coinGroupRef.current) {
-        coinGroupRef.current.rotation.y = state.currentRotY;
-        coinGroupRef.current.rotation.x = state.currentRotX;
+      r.currentRotY += (r.targetRotY - r.currentRotY) * (r.isDragging ? 0.22 : 0.07);
+      r.currentRotX += (r.targetRotX - r.currentRotX) * (r.isDragging ? 0.22 : 0.07);
+      if (groupRef.current) {
+        groupRef.current.rotation.y = r.currentRotY;
+        groupRef.current.rotation.x = r.currentRotX;
       }
-
       renderer.render(scene, camera);
     };
+    tick();
 
-    render();
-
-    // ── Resize Observer ─────────────────────────────────────────────────────
-    const resizeObserver = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        const { width: w, height: h } = entry.contentRect;
-        if (w > 0 && h > 0) {
-          updateCameraFraming(camera, w, h, sizeMm);
-          renderer.setSize(w, h);
-        }
+    const ro = new ResizeObserver(entries => {
+      for (const e of entries) {
+        const { width: w, height: h } = e.contentRect;
+        if (w > 0 && h > 0) { frame(camera, w, h, sizeMm); renderer.setSize(w, h); }
       }
     });
-    resizeObserver.observe(container);
+    ro.observe(el);
 
     return () => {
-      cancelAnimationFrame(animFrameIdRef.current);
-      resizeObserver.disconnect();
-      if (renderer.domElement.parentNode) {
-        renderer.domElement.parentNode.removeChild(renderer.domElement);
-      }
+      cancelAnimationFrame(animIdRef.current);
+      ro.disconnect();
+      renderer.domElement.parentNode?.removeChild(renderer.domElement);
       renderer.dispose();
-      bodyGeom.dispose();
-      bodyMat.dispose();
-      rimGeom.dispose();
-      rimMat.dispose();
-      faceGeom.dispose();
-      bailGeom.dispose();
-      bailMat.dispose();
+      [bodyGeom, rimGeom, backGeom, faceGeom, bailGeom].forEach(g => g.dispose());
+      [bodyMat, rimMat, backMat, initFaceMat, bailMat].forEach(m => m.dispose());
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── 2. Dynamically re-frame when sizeMm prop changes ──────────────────────
+  // ── Resize camera when sizeMm changes ───────────────────────────────────
   useEffect(() => {
-    if (!coinGroupRef.current || !cameraRef.current || !mountRef.current) return;
-    const w = mountRef.current.clientWidth || 320;
+    if (!groupRef.current || !cameraRef.current || !mountRef.current) return;
+    const w = mountRef.current.clientWidth || 340;
     const h = mountRef.current.clientHeight || 380;
-    const baseScale = 1.0 + ((sizeMm - 20) / 20) * 0.16;
-    coinGroupRef.current.scale.set(baseScale, baseScale, baseScale);
-
-    const aspect = w / h;
-    const fovRad = THREE.MathUtils.degToRad(cameraRef.current.fov / 2);
-    const totalHeight = 4.15 * baseScale;
-    const totalWidth = 3.66 * baseScale;
-    const maxDiag = Math.hypot(totalWidth, totalHeight) * 0.90;
-    const padding = 1.18;
-    const distV = (totalHeight * padding) / (2 * Math.tan(fovRad));
-    const distH = (totalWidth * padding) / (2 * Math.tan(fovRad) * Math.max(aspect, 0.5));
-    const distDiag = (maxDiag * padding) / (2 * Math.tan(fovRad) * Math.min(Math.max(aspect, 0.75), 1.0));
-    cameraRef.current.position.set(0, 0, Math.max(distV, distH, distDiag));
+    const s = 1.0 + ((sizeMm - 20) / 20) * 0.14;
+    groupRef.current.scale.set(s, s, s);
+    const fovR = THREE.MathUtils.degToRad(cameraRef.current.fov / 2);
+    const asp  = w / h;
+    const tH = 4.42 * s, tW = 3.62 * s;
+    const diag = Math.hypot(tW, tH) * 0.88;
+    const pad  = 1.14;
+    const dV  = (tH * pad) / (2 * Math.tan(fovR));
+    const dH  = (tW * pad) / (2 * Math.tan(fovR) * Math.max(asp, 0.45));
+    const dD  = (diag * pad) / (2 * Math.tan(fovR) * Math.min(Math.max(asp, 0.7), 1.0));
+    cameraRef.current.position.set(0, 0, Math.max(dV, dH, dD));
     cameraRef.current.updateProjectionMatrix();
   }, [sizeMm]);
 
-  // ── 3. Terrain Relief Heightmap & Normal Map Generation Pipeline ───────────
+  // ── Engraving update ─────────────────────────────────────────────────────
   useEffect(() => {
-    let isCancelled = false;
+    if (!backMeshRef.current) return;
+    const mat = backMeshRef.current.material as THREE.MeshStandardMaterial;
+    if (!mat) return;
+    if (mat.map) mat.map.dispose();
+    mat.map = createBackTex(engravingText);
+    mat.needsUpdate = true;
+  }, [engravingText]);
 
-    const generateTerrainRelief = async () => {
-      if (!faceMeshRef.current) return;
+  // ── Terrain Relief Pipeline ──────────────────────────────────────────────
+  useEffect(() => {
+    let cancelled = false;
 
-      // 1. Calculate map tile coordinates
-      const n = Math.pow(2, zoom);
-      const exactX = ((lng + 180) / 360) * n;
-      const latRad = (lat * Math.PI) / 180;
-      const exactY = ((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2) * n;
-      const centerTileX = Math.floor(exactX);
-      const centerTileY = Math.floor(exactY);
-      const subpixelX = (exactX - centerTileX) * 256;
-      const subpixelY = (exactY - centerTileY) * 256;
+    const run = async () => {
+      if (!faceMeshRef.current || !faceGeomRef.current) return;
 
-      // 2. Stitch 3x3 tiles on offscreen high-res canvas (512x512)
-      const offscreen = document.createElement('canvas');
-      offscreen.width = 512;
-      offscreen.height = 512;
-      const ctx = offscreen.getContext('2d', { willReadFrequently: true });
-      if (!ctx) return;
+      const n  = Math.pow(2, zoom);
+      const eX = ((lng + 180) / 360) * n;
+      const latR = (lat * Math.PI) / 180;
+      const eY = ((1 - Math.log(Math.tan(latR) + 1 / Math.cos(latR)) / Math.PI) / 2) * n;
+      const cTX = Math.floor(eX), cTY = Math.floor(eY);
+      const spX = (eX - cTX) * 256, spY = (eY - cTY) * 256;
 
-      const centerX = 256;
-      const centerY = 256;
+      const layerC = document.createElement('canvas'); layerC.width = layerC.height = 512;
+      const lCtx = layerC.getContext('2d', { willReadFrequently: true })!;
+      const demC  = document.createElement('canvas'); demC.width  = demC.height  = 512;
+      const dCtx  = demC.getContext('2d', { willReadFrequently: true })!;
 
-      // Build tile URLs
-      const tilePromises: Promise<{ img: HTMLImageElement; drawX: number; drawY: number } | null>[] = [];
+      const fetchTile = (url: string, dx: number, dy: number) =>
+        new Promise<{ img: HTMLImageElement; dx: number; dy: number } | null>(res => {
+          const img = new Image(); img.crossOrigin = 'anonymous';
+          img.onload = () => res({ img, dx, dy });
+          img.onerror = () => res(null);
+          img.src = url;
+        });
 
-      for (let dx = -1; dx <= 1; dx++) {
-        for (let dy = -1; dy <= 1; dy++) {
-          const tx = centerTileX + dx;
-          const ty = centerTileY + dy;
-          const drawX = centerX - subpixelX + dx * 256;
-          const drawY = centerY - subpixelY + dy * 256;
-
-          let tileUrl = '';
+      const lP: ReturnType<typeof fetchTile>[] = [];
+      const dP: ReturnType<typeof fetchTile>[] = [];
+      for (let ddx = -1; ddx <= 1; ddx++) {
+        for (let ddy = -1; ddy <= 1; ddy++) {
+          const tx = cTX + ddx, ty = cTY + ddy;
+          const drawX = 256 - spX + ddx * 256, drawY = 256 - spY + ddy * 256;
+          let url = '';
           switch (activeStyleId) {
             case 'satellite':
-              tileUrl = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${zoom}/${ty}/${tx}`;
-              break;
+              url = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${zoom}/${ty}/${tx}`; break;
             case 'roadmap':
-              tileUrl = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/${zoom}/${ty}/${tx}`;
-              break;
+              url = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/${zoom}/${ty}/${tx}`; break;
             case 'topographic':
-              tileUrl = `https://a.tile.opentopomap.org/${zoom}/${tx}/${ty}.png`;
-              break;
-            case 'dark-surface':
-            case 'silver-hillshade':
-              tileUrl = `https://server.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/tile/${zoom}/${ty}/${tx}`;
-              break;
+              url = `https://a.tile.opentopomap.org/${zoom}/${tx}/${ty}.png`; break;
+            case 'dark-surface': case 'silver-hillshade':
+              url = `https://server.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/tile/${zoom}/${ty}/${tx}`; break;
             case 'light-surface':
-              tileUrl = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/${zoom}/${ty}/${tx}`;
-              break;
-            case 'terrain':
+              url = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/${zoom}/${ty}/${tx}`; break;
             default:
-              tileUrl = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Shaded_Relief/MapServer/tile/${zoom}/${ty}/${tx}`;
-              break;
+              url = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Shaded_Relief/MapServer/tile/${zoom}/${ty}/${tx}`; break;
           }
-
-          tilePromises.push(
-            new Promise((resolve) => {
-              const img = new Image();
-              img.crossOrigin = 'anonymous';
-              img.onload = () => resolve({ img, drawX, drawY });
-              img.onerror = () => resolve(null);
-              img.src = tileUrl;
-            })
-          );
+          lP.push(fetchTile(url, drawX, drawY));
+          dP.push(fetchTile(`https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${zoom}/${tx}/${ty}.png`, drawX, drawY));
         }
       }
 
-      const loadedTiles = await Promise.all(tilePromises);
-      if (isCancelled) return;
+      const [layerTiles, demTiles] = await Promise.all([Promise.all(lP), Promise.all(dP)]);
+      if (cancelled) return;
 
-      // Draw all tiles to offscreen canvas
-      ctx.fillStyle = '#808080';
-      ctx.fillRect(0, 0, 512, 512);
-      for (const t of loadedTiles) {
-        if (t) {
-          ctx.drawImage(t.img, t.drawX, t.drawY, 256, 256);
+      lCtx.fillStyle = '#888'; lCtx.fillRect(0, 0, 512, 512);
+      for (const t of layerTiles) { if (t) lCtx.drawImage(t.img, t.dx, t.dy, 256, 256); }
+
+      dCtx.fillStyle = '#000'; dCtx.fillRect(0, 0, 512, 512);
+      let demCnt = 0;
+      for (const t of demTiles) { if (t) { dCtx.drawImage(t.img, t.dx, t.dy, 256, 256); demCnt++; } }
+      const hasDem = demCnt >= 4;
+
+      const W = 512, H = 512;
+      const lData = lCtx.getImageData(0, 0, W, H).data;
+      let dData: Uint8ClampedArray | null = null;
+      if (hasDem) { try { dData = dCtx.getImageData(0, 0, W, H).data; } catch { dData = null; } }
+
+      const hf  = new Float32Array(W * H);
+      const rawE = new Float32Array(W * H);
+      const rawL = new Float32Array(W * H);
+      let minV = 1e9, maxV = -1e9;
+
+      for (let i = 0; i < W * H; i++) {
+        const p = i * 4;
+        const r = lData[p]/255, g = lData[p+1]/255, b = lData[p+2]/255;
+        let lum = 0.299*r + 0.587*g + 0.114*b;
+        if (activeStyleId === 'satellite') lum = Math.min(1, lum * 1.35);
+        rawL[i] = lum;
+        if (dData) {
+          const e = (dData[p]*256 + dData[p+1] + dData[p+2]/256) - 32768;
+          rawE[i] = e; if (e < minV) minV = e; if (e > maxV) maxV = e;
+        } else {
+          rawE[i] = lum; if (lum < minV) minV = lum; if (lum > maxV) maxV = lum;
         }
       }
 
-      // 3. Process raw map image into Heightfield & Chiseled Normal Map
-      const imgData = ctx.getImageData(0, 0, 512, 512);
-      const data = imgData.data;
-      const W = 512;
-      const H = 512;
-      const heightfield = new Float32Array(W * H);
-
-      // Step A: Luminance conversion with layer-specific contrast curve
-      let minLum = 1.0;
-      let maxLum = 0.0;
-
-      for (let i = 0; i < data.length; i += 4) {
-        const r = data[i] / 255;
-        const g = data[i + 1] / 255;
-        const b = data[i + 2] / 255;
-        let lum = 0.299 * r + 0.587 * g + 0.114 * b;
-
-        // Satellite: Enhance feature contrast (water vs land & mountain texture)
-        if (activeStyleId === 'satellite') {
-          const isWater = b > r && g > r && r < 0.25;
-          if (isWater) lum = 0.18;
-          else lum = Math.min(1.0, lum * 1.35);
-        }
-
-        // Roadmap: Roads and borders become engraved channels / ridges
-        if (activeStyleId === 'roadmap') {
-          const isYellowOrangeRoad = r > 0.7 && g > 0.4 && b < 0.3;
-          if (isYellowOrangeRoad) lum = 0.95;
-        }
-
-        heightfield[i / 4] = lum;
-        if (lum < minLum) minLum = lum;
-        if (lum > maxLum) maxLum = lum;
-      }
-
-      // Step B: Normalize & High-Pass contrast curve
-      const lumRange = Math.max(maxLum - minLum, 0.05);
-      for (let i = 0; i < heightfield.length; i++) {
-        let v = (heightfield[i] - minLum) / lumRange;
-        // Non-linear S-curve for punchy chiseled terrain relief
-        v = v * v * (3 - 2 * v);
-        heightfield[i] = v;
-      }
-
-      // Step C: Circular feathering mask to seamlessly merge with the outer silver rim
-      const halfW = W / 2;
-      const halfH = H / 2;
-      const maxR = halfW * 0.97;
-
+      const range = Math.max(maxV - minV, 1.0);
       for (let y = 0; y < H; y++) {
         for (let x = 0; x < W; x++) {
-          const idx = y * W + x;
-          const dist = Math.hypot(x - halfW, y - halfH);
-          if (dist > maxR) {
-            const fade = Math.max(0, 1 - (dist - maxR) / (halfW * 0.03));
-            heightfield[idx] = heightfield[idx] * fade + 0.5 * (1 - fade);
+          const i = y*W+x;
+          const nm = Math.min(1, Math.max(0, (rawE[i] - minV) / range));
+          const c  = rawL[i];
+          const t  = y>0      ? rawL[(y-1)*W+x] : c;
+          const b2 = y<H-1    ? rawL[(y+1)*W+x] : c;
+          const l2 = x>0      ? rawL[y*W+(x-1)] : c;
+          const r2 = x<W-1    ? rawL[y*W+(x+1)] : c;
+          const hp = c - (t+b2+l2+r2)*0.25;
+          let v = hasDem
+            ? nm*0.65 + (0.5 + hp*4.5)*0.35
+            : nm*0.68 + (0.5 + hp*4.0)*0.32;
+          v = Math.min(1, Math.max(0, v));
+          hf[i] = v * v * (3 - 2*v); // smooth step
+        }
+      }
+
+      // Normal map (Sobel filter)
+      const nC = document.createElement('canvas'); nC.width = nC.height = 512;
+      const nCtx = nC.getContext('2d')!;
+      const nImg = nCtx.createImageData(512, 512);
+      const nD = nImg.data;
+      const NS = 6.0;
+      for (let y = 1; y < H-1; y++) {
+        for (let x = 1; x < W-1; x++) {
+          const i = y*W+x;
+          const tl=hf[(y-1)*W+(x-1)], t2=hf[(y-1)*W+x], tr=hf[(y-1)*W+(x+1)];
+          const l2=hf[y*W+(x-1)],                          r2=hf[y*W+(x+1)];
+          const bl=hf[(y+1)*W+(x-1)], b2=hf[(y+1)*W+x],  br=hf[(y+1)*W+(x+1)];
+          const dX = (tr+2*r2+br)-(tl+2*l2+bl);
+          const dY = (bl+2*b2+br)-(tl+2*t2+tr);
+          const nx=-dX*NS, ny=-dY*NS, nz=1.0;
+          const len=Math.sqrt(nx*nx+ny*ny+nz*nz);
+          const p2=i*4;
+          nD[p2]  =Math.round(((nx/len)*0.5+0.5)*255);
+          nD[p2+1]=Math.round(((ny/len)*0.5+0.5)*255);
+          nD[p2+2]=Math.round(((nz/len)*0.5+0.5)*255);
+          nD[p2+3]=255;
+        }
+      }
+      nCtx.putImageData(nImg, 0, 0);
+
+      // Patina (silver color graded by height) + roughness map
+      const pC = document.createElement('canvas'); pC.width = pC.height = 512;
+      const pCtx = pC.getContext('2d')!;
+      const pImg = pCtx.createImageData(512,512); const pD = pImg.data;
+      const rC = document.createElement('canvas'); rC.width = rC.height = 512;
+      const rCtx = rC.getContext('2d')!;
+      const rImg = rCtx.createImageData(512,512); const roD = rImg.data;
+
+      for (let y = 1; y < H-1; y++) {
+        for (let x = 1; x < W-1; x++) {
+          const i = y*W+x;
+          const c = hf[i];
+          const t2=hf[(y-1)*W+x], b2=hf[(y+1)*W+x];
+          const l2=hf[y*W+(x-1)], r2=hf[y*W+(x+1)];
+          const lap = c*4 - t2 - b2 - l2 - r2;
+          const sc = Math.min(1, Math.max(0, c*0.62 + (0.5+lap*4.2)*0.38));
+          const p2 = i*4;
+          let rv: number, gv: number, bv: number, ro: number;
+
+          if (sc < 0.32) {
+            // Deep valleys — oxidised graphite silver
+            const tt=sc/0.32;
+            rv=Math.round(102+tt*80); gv=Math.round(108+tt*82); bv=Math.round(118+tt*80); ro=Math.round(100-tt*30);
+          } else if (sc < 0.68) {
+            // Mid slopes — solid sterling silver
+            const tt=(sc-0.32)/0.36;
+            rv=Math.round(182+tt*58); gv=Math.round(190+tt*54); bv=Math.round(198+tt*50); ro=Math.round(70-tt*40);
+          } else {
+            // Summit ridges — mirror polished silver
+            const tt=(sc-0.68)/0.32;
+            rv=Math.round(240+tt*15); gv=Math.round(244+tt*11); bv=Math.round(248+tt*7); ro=Math.round(30-tt*14);
+          }
+          pD[p2]=rv; pD[p2+1]=gv; pD[p2+2]=bv; pD[p2+3]=255;
+          roD[p2]=ro; roD[p2+1]=ro; roD[p2+2]=ro; roD[p2+3]=255;
+        }
+      }
+      pCtx.putImageData(pImg, 0, 0);
+      rCtx.putImageData(rImg, 0, 0);
+
+      // Bump (greyscale heightfield)
+      const bC = document.createElement('canvas'); bC.width = bC.height = 512;
+      const bCtx = bC.getContext('2d')!;
+      const bImg = bCtx.createImageData(512,512); const bD = bImg.data;
+      for (let i = 0; i < hf.length; i++) {
+        const v=Math.round(hf[i]*255); const p2=i*4;
+        bD[p2]=v; bD[p2+1]=v; bD[p2+2]=v; bD[p2+3]=255;
+      }
+      bCtx.putImageData(bImg, 0, 0);
+
+      if (cancelled) return;
+
+      const mkTex = (cv: HTMLCanvasElement, srgb: boolean) => {
+        const t = new THREE.CanvasTexture(cv);
+        t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.LinearSRGBColorSpace;
+        t.needsUpdate = true; return t;
+      };
+      const nTex = mkTex(nC, false);
+      const bTex = mkTex(bC, false);
+      const pTex = mkTex(pC, true);
+      const rTex = mkTex(rC, false);
+
+      // Vertex displacement — full circle coverage with edge taper
+      if (faceGeomRef.current) {
+        const geom = faceGeomRef.current;
+        const pos  = geom.attributes.position;
+        const uvs  = geom.attributes.uv;
+        const baseDisp  = 0.60;
+        const scale     = (sizeMm || 20) / 20;
+        const maxDisp   = baseDisp * Math.pow(scale, 1.1);
+        const edgeStart = 0.91; // taper begins at 91% of COIN_RADIUS
+
+        for (let i = 0; i < pos.count; i++) {
+          const vx = pos.getX(i), vy = pos.getY(i);
+          const dist = Math.hypot(vx, vy);
+
+          if (dist <= COIN_RADIUS) {
+            // Smooth taper at edge so peaks don't exceed the bezel rim
+            let ef = 1.0;
+            if (dist > COIN_RADIUS * edgeStart) {
+              const tt = (dist - COIN_RADIUS * edgeStart) / (COIN_RADIUS * (1 - edgeStart));
+              ef = 0.5 + 0.5 * Math.cos(tt * Math.PI);
+            }
+            const u  = uvs.getX(i);
+            const v  = 1.0 - uvs.getY(i);
+            const px = Math.min(511, Math.max(0, Math.floor(u * 512)));
+            const py = Math.min(511, Math.max(0, Math.floor(v * 512)));
+            const hv = hf[py * 512 + px] || 0;
+            pos.setZ(i, hv * maxDisp * ef);
+          } else {
+            pos.setZ(i, 0);
           }
         }
+        pos.needsUpdate = true;
+        geom.computeVertexNormals();
       }
 
-      // Step D: Generate Normal Map Canvas using Sobel Gradient Operator
-      const normalCanvas = document.createElement('canvas');
-      normalCanvas.width = W;
-      normalCanvas.height = H;
-      const normCtx = normalCanvas.getContext('2d')!;
-      const normImgData = normCtx.createImageData(W, H);
-      const normData = normImgData.data;
-
-      // Relief strength factor (creates the deep chiseled 3D shadows seen in reference)
-      const normalStrength = 4.2;
-
-      for (let y = 1; y < H - 1; y++) {
-        for (let x = 1; x < W - 1; x++) {
-          const idx = y * W + x;
-
-          // Sobel operator
-          const tl = heightfield[(y - 1) * W + (x - 1)];
-          const t = heightfield[(y - 1) * W + x];
-          const tr = heightfield[(y - 1) * W + (x + 1)];
-          const l = heightfield[y * W + (x - 1)];
-          const r = heightfield[y * W + (x + 1)];
-          const bl = heightfield[(y + 1) * W + (x - 1)];
-          const b = heightfield[(y + 1) * W + x];
-          const br = heightfield[(y + 1) * W + (x + 1)];
-
-          const dX = (tr + 2 * r + br) - (tl + 2 * l + bl);
-          const dY = (bl + 2 * b + br) - (tl + 2 * t + tr);
-
-          // Vector normal calculation
-          const nx = -dX * normalStrength;
-          const ny = -dY * normalStrength;
-          const nz = 1.0;
-          const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
-
-          const pixelIdx = idx * 4;
-          normData[pixelIdx] = Math.round(((nx / len) * 0.5 + 0.5) * 255);
-          normData[pixelIdx + 1] = Math.round(((ny / len) * 0.5 + 0.5) * 255);
-          normData[pixelIdx + 2] = Math.round(((nz / len) * 0.5 + 0.5) * 255);
-          normData[pixelIdx + 3] = 255;
-        }
-      }
-      normCtx.putImageData(normImgData, 0, 0);
-
-      // Step E: Generate Cavity & Roughness Map Canvas (Chiseled highlights & dark valley shadows)
-      const cavityCanvas = document.createElement('canvas');
-      cavityCanvas.width = W;
-      cavityCanvas.height = H;
-      const cavCtx = cavityCanvas.getContext('2d')!;
-      const cavImgData = cavCtx.createImageData(W, H);
-      const cavData = cavImgData.data;
-
-      for (let y = 1; y < H - 1; y++) {
-        for (let x = 1; x < W - 1; x++) {
-          const idx = y * W + x;
-          const c = heightfield[idx];
-          const t = heightfield[(y - 1) * W + x];
-          const b = heightfield[(y + 1) * W + x];
-          const l = heightfield[y * W + (x - 1)];
-          const r = heightfield[y * W + (x + 1)];
-
-          // Laplacian edge curvature detection
-          const laplacian = (c * 4 - t - b - l - r);
-          // Dark silver crevice shading with brilliant ridge highlights
-          const cavity = Math.min(1.0, Math.max(0.0, 0.5 + laplacian * 3.5 + (c - 0.5) * 0.45));
-
-          const pIdx = idx * 4;
-          const val = Math.round(cavity * 255);
-          cavData[pIdx] = val;
-          cavData[pIdx + 1] = val;
-          cavData[pIdx + 2] = val;
-          cavData[pIdx + 3] = 255;
-        }
-      }
-      cavCtx.putImageData(cavImgData, 0, 0);
-
-      // Step F: Height Canvas for Bump Mapping
-      const heightCanvas = document.createElement('canvas');
-      heightCanvas.width = W;
-      heightCanvas.height = H;
-      const hCtx = heightCanvas.getContext('2d')!;
-      const hImgData = hCtx.createImageData(W, H);
-      const hData = hImgData.data;
-
-      for (let i = 0; i < heightfield.length; i++) {
-        const val = Math.round(heightfield[i] * 255);
-        const pIdx = i * 4;
-        hData[pIdx] = val;
-        hData[pIdx + 1] = val;
-        hData[pIdx + 2] = val;
-        hData[pIdx + 3] = 255;
-      }
-      hCtx.putImageData(hImgData, 0, 0);
-
-      if (isCancelled) return;
-
-      // 4. Create Three.js Canvas Textures
-      const normalTex = new THREE.CanvasTexture(normalCanvas);
-      normalTex.colorSpace = THREE.LinearSRGBColorSpace;
-      normalTex.needsUpdate = true;
-
-      const bumpTex = new THREE.CanvasTexture(heightCanvas);
-      bumpTex.colorSpace = THREE.LinearSRGBColorSpace;
-      bumpTex.needsUpdate = true;
-
-      const cavityTex = new THREE.CanvasTexture(cavityCanvas);
-      cavityTex.colorSpace = THREE.SRGBColorSpace;
-      cavityTex.needsUpdate = true;
-
-      // 5. Apply to Sterling Silver Physical Material
+      // Apply final terrain material
       const faceMat = new THREE.MeshStandardMaterial({
-        color: new THREE.Color(0xdce1e8), // Solid sterling silver base
-        map: cavityTex,                   // Chiseled relief shading (dark crevices, gleaming peaks)
-        metalness: 0.82,
-        roughness: 0.28,
-        bumpMap: bumpTex,
-        bumpScale: 0.09,
-        normalMap: normalTex,
-        normalScale: new THREE.Vector2(2.8, 2.8),
-        roughnessMap: cavityTex,
+        color: new THREE.Color(0xffffff),
+        map: pTex, roughnessMap: rTex,
+        metalness: 0.97, roughness: 0.14,
+        bumpMap: bTex,
+        bumpScale: 0.095 * ((sizeMm || 20) / 20),
+        normalMap: nTex,
+        normalScale: new THREE.Vector2(4.0, 4.0),
+        alphaMap: maskTexRef.current || undefined,
+        alphaTest: 0.5,
       });
 
       if (faceMeshRef.current) {
-        const oldMat = faceMeshRef.current.material;
+        const old = faceMeshRef.current.material;
         faceMeshRef.current.material = faceMat;
-        if (Array.isArray(oldMat)) oldMat.forEach((m) => m.dispose());
-        else if (oldMat) oldMat.dispose();
+        if (Array.isArray(old)) old.forEach(m => m.dispose());
+        else if (old) (old as THREE.Material).dispose();
       }
     };
 
-    generateTerrainRelief();
+    run().catch(console.error);
+    return () => { cancelled = true; };
+  }, [lat, lng, zoom, activeStyleId, sizeMm]);
 
-    return () => {
-      isCancelled = true;
-    };
-  }, [lat, lng, zoom, activeStyleId]);
-
-  // ── 3. Pointer Drag Interactivity for 360° Turntable Rotation ─────────────
-  const handlePointerDown = (clientX: number, clientY: number) => {
-    rotState.current.isDragging = true;
-    rotState.current.startX = clientX;
-    rotState.current.startY = clientY;
-    rotState.current.lastInteraction = Date.now();
+  // ── Pointer / Touch Rotation ─────────────────────────────────────────────
+  const onDown = (x: number, y: number) => {
+    const r = rot.current;
+    r.isDragging = true; r.startX = x; r.startY = y; r.lastInteraction = Date.now();
   };
-
-  const handlePointerMove = (clientX: number, clientY: number) => {
-    if (!rotState.current.isDragging) return;
-    const deltaX = clientX - rotState.current.startX;
-    const deltaY = clientY - rotState.current.startY;
-
-    rotState.current.targetRotY += deltaX * 0.012;
-    rotState.current.targetRotX = Math.max(
-      -0.65,
-      Math.min(0.65, rotState.current.targetRotX + deltaY * 0.01)
-    );
-
-    rotState.current.startX = clientX;
-    rotState.current.startY = clientY;
-    rotState.current.lastInteraction = Date.now();
+  const onMove = (x: number, y: number) => {
+    const r = rot.current;
+    if (!r.isDragging) return;
+    r.targetRotY += (x - r.startX) * 0.012;
+    r.targetRotX  = Math.max(-0.55, Math.min(0.55, r.targetRotX + (y - r.startY) * 0.010));
+    r.startX = x; r.startY = y; r.lastInteraction = Date.now();
   };
-
-  const handlePointerUp = () => {
-    rotState.current.isDragging = false;
-    rotState.current.lastInteraction = Date.now();
-  };
+  const onUp = () => { rot.current.isDragging = false; rot.current.lastInteraction = Date.now(); };
 
   return (
     <div
       className="three-pendant-viewport"
       ref={mountRef}
-      onMouseDown={(e) => handlePointerDown(e.clientX, e.clientY)}
-      onMouseMove={(e) => handlePointerMove(e.clientX, e.clientY)}
-      onMouseUp={handlePointerUp}
-      onMouseLeave={handlePointerUp}
-      onTouchStart={(e) => {
-        const t = e.touches[0];
-        handlePointerDown(t.clientX, t.clientY);
-      }}
-      onTouchMove={(e) => {
-        const t = e.touches[0];
-        handlePointerMove(t.clientX, t.clientY);
-      }}
-      onTouchEnd={handlePointerUp}
+      onMouseDown={e => onDown(e.clientX, e.clientY)}
+      onMouseMove={e => onMove(e.clientX, e.clientY)}
+      onMouseUp={onUp} onMouseLeave={onUp}
+      onTouchStart={e => { const t = e.touches[0]; onDown(t.clientX, t.clientY); }}
+      onTouchMove={e =>  { const t = e.touches[0]; onMove(t.clientX, t.clientY); }}
+      onTouchEnd={onUp}
       style={{
-        width: '100%',
-        height: '100%',
-        minHeight: '380px',
-        position: 'relative',
-        cursor: 'grab',
-        userSelect: 'none',
-        touchAction: 'none',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
+        width: '100%', height: '100%', minHeight: '380px', position: 'relative',
+        cursor: 'grab', userSelect: 'none', touchAction: 'none',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}
     >
-      {/* Optional Inscribed Monogram Badge */}
       {engravingText && (
         <div className="pendant-engraving-badge" style={{ zIndex: 10 }}>
           <span>&ldquo;{engravingText}&rdquo;</span>
